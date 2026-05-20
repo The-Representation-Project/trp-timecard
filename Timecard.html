@@ -2,11 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Timecard — The Representation Project</title>
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="assets/TRP-Icon-Blue.png" />
+
+  <!-- iOS install-as-app support: tap Share → Add to Home Screen on
+       iPhone Safari and the app launches full-screen with this icon. -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Timecard" />
+  <meta name="theme-color" content="#003e56" />
+  <link rel="apple-touch-icon" href="assets/icon-180.png" />
+  <link rel="manifest" href="manifest.json" />
 
   <!-- TRP design tokens -->
   <link rel="stylesheet" href="assets/colors_and_type.css" />

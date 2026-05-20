@@ -756,14 +756,128 @@ textarea { resize: vertical; min-height: 80px; }
 
 /* Mobile tweaks */
 @media (max-width: 640px) {
-  .topbar { padding: 12px 16px; gap: 12px; flex-wrap: wrap; }
-  .topbar .nav { order: 3; width: 100%; }
-  .page { padding: 20px 16px 60px; }
-  .clock-card { padding: 24px 20px 28px; }
-  .clock-card .timer { font-size: 64px; }
-  .page-header h1 { font-size: 28px; }
-  .stat .value { font-size: 24px; }
-  .ts-table th, .ts-table td { padding: 10px 8px; font-size: 12px; }
+  .topbar {
+    padding: 12px 16px;
+    gap: 12px;
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+  .topbar .brand-text { font-size: 12px; }
+  .topbar .brand-text .sub { display: none; }
+  .topbar .brand img { height: 28px; }
+  .topbar .user-chip { display: none; }
+
+  /* Top nav becomes a fixed bottom tab bar — iOS-native feeling */
+  .topbar .nav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 30;
+    background: white;
+    border-top: 1px solid var(--border-soft);
+    padding: 8px 4px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    justify-content: space-around;
+    gap: 0;
+    overflow: visible;
+    box-shadow: 0 -4px 16px rgba(0, 62, 86, 0.06);
+  }
+  .topbar .nav .nav-link {
+    flex: 1;
+    padding: 8px 4px;
+    font-size: 10px;
+    border: none;
+    border-radius: var(--radius-sm);
+    text-align: center;
+    line-height: 1.2;
+  }
+  .topbar .nav .nav-link.active {
+    color: var(--trp-pacific-700);
+    background: var(--trp-pacific-50);
+    border: none;
+  }
+
+  /* Leave room at the bottom for the fixed tab bar */
+  .app { padding-bottom: 72px; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .page { padding: 16px 14px 24px; }
+
+  /* Clock card — make it the hero on mobile */
+  .clock-card { padding: 24px 18px 28px; border-radius: var(--radius-md); }
+  .clock-card .timer { font-size: 56px; letter-spacing: -0.02em; }
+  .clock-card .label { font-size: 13px; }
+  .clock-btn {
+    min-height: 56px;
+    font-size: 15px;
+    width: 100%;
+  }
+  .clock-card .row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .clock-card .row > button.btn.ghost { width: 100%; }
+
+  /* Stats stack on mobile */
+  .grid-2, .grid-3, .stat-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .page-header h1 { font-size: 24px; }
+  .page-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .page-header .actions { width: 100%; }
+  .page-header .actions .btn { width: 100%; }
+
+  .stat .value { font-size: 28px; }
+
+  /* Tables — slim padding, smaller font */
+  .ts-table th, .ts-table td,
+  .history-table th, .history-table td,
+  .mini-table th, .mini-table td {
+    padding: 8px 6px;
+    font-size: 11px;
+  }
+
+  /* Buttons — 44px min tap height per iOS HIG */
+  .btn { min-height: 44px; padding: 10px 16px; }
+  .btn.small { min-height: 36px; padding: 8px 12px; font-size: 12px; }
+
+  /* Modals — full-screen sheet on mobile */
+  .modal-bg { padding: 0; align-items: flex-end; }
+  .modal {
+    max-width: 100% !important;
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+    padding: 20px 18px;
+    padding-bottom: max(20px, calc(20px + env(safe-area-inset-bottom)));
+    overflow-y: auto;
+  }
+  .modal-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .modal-actions .btn { width: 100%; }
+
+  /* Queue / send cards */
+  .queue-card { padding: 18px 16px; }
+  .queue-card .top { flex-direction: column; align-items: flex-start; gap: 10px; }
+
+  /* Approval shell on mobile */
+  .approval-topbar { padding: 12px 16px; }
+  .approval-page { padding: 16px 14px 60px; }
+  .approval-hero { padding: 18px 18px; grid-template-columns: 1fr; }
+  .approval-totals { text-align: left; }
+  .approval-totals .big-num { font-size: 44px; }
+  .approval-hero h1 { font-size: 22px; }
+  .sign-card { padding: 20px 18px; }
+  .signed-hero { padding: 20px 18px; }
+  .signed-hero h1 { font-size: 22px; }
+  .signed-sig-block { grid-template-columns: 1fr; }
+  .signed-sig-block > div:last-child { text-align: left; border-left: none; padding-left: 0; }
+}
+
+/* Safe-area handling for installed PWA on iPhone (notch / home indicator) */
+@supports (padding: env(safe-area-inset-top)) {
+  .topbar { padding-top: max(16px, env(safe-area-inset-top)); }
 }
 
 /* ===== Approval shell (Katrina's view) ============================ */

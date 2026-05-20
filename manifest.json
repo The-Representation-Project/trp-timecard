@@ -1,0 +1,25 @@
+{
+  "name": "Timecard — The Representation Project",
+  "short_name": "Timecard",
+  "description": "Personal timecard for Erika at The Representation Project. Track hours, log PTO/sick, send pay periods to Katrina for approval.",
+  "start_url": "./Timecard.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#003e56",
+  "theme_color": "#003e56",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
