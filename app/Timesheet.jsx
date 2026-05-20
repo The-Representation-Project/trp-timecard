@@ -1,0 +1,357 @@
+// app/Timesheet.jsx — Weekly view: per-day rows, manual edits, submit.
+// Single-user. Also handles partial-submit-with-estimates so Erika can
+// submit by the 13th/28th deadline with the last 2-3 days pre-filled.
+
+const { useState: useStateTS } = React;
+
+function Timesheet() {
+  const { state, actions } = useStore();
+  const user = currentUser(state);
+
+  const [weekStart, setWeekStart] = useStateTS(() => TC.weekRange(new Date(), 0).startIso);
+  const [editing, setEditing] = useStateTS(null); // entry id, or { new: dateIso }
+  const [showSubmit, setShowSubmit] = useStateTS(false);
+
+  const now = useLiveClock();
+
+  const days = TC.weekDays(weekStart);
+  const totals = weekTotals(state, weekStart, user.id, now);
+  const submission = weekSubmission(state, weekStart, user.id);
+  const locked = isWeekLocked(state, weekStart, user.id);
+
+  const todayIso = TC.isoDate(new Date(now));
+  const todayWeekStart = TC.weekRange(new Date(now), 0).startIso;
+  function shiftWeek(delta) {
+    const d = TC.parseDate(weekStart);
+    d.setDate(d.getDate() + 7 * delta);
+    setWeekStart(TC.weekRange(d, 0).startIso);
+  }
+
+  function entriesForDay(d) { return state.timeEntries.filter(e => e.userId === user.id && e.date === d); }
+  function leaveForDay(d) { return state.leaveEntries.filter(l => l.userId === user.id && l.date === d); }
+
+  // Are any days in this week beyond today? (Drives the partial-submit hint.)
+  const hasUpcomingDays = days.some(d => d > todayIso);
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <div>
+          <div className="eyebrow">Weekly timesheet</div>
+          <h1>Your Timesheet</h1>
+        </div>
+        <div className="actions">
+          {!locked && submission && submission.status === 'draft' && (
+            <button className="btn" onClick={() => setShowSubmit(true)} disabled={totals.total === 0}>
+              Submit Week for Approval
+            </button>
+          )}
+          {submission && (submission.status === 'changes_requested' || submission.status === 'rejected') && (
+            <button className="btn warm" onClick={() => setShowSubmit(true)}>
+              Resubmit Week
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="week-nav">
+        <button onClick={() => shiftWeek(-1)} aria-label="Previous week">‹</button>
+        <div className="range">{TC.fmtRange(weekStart, days[6])}</div>
+        <button onClick={() => shiftWeek(1)} aria-label="Next week">›</button>
+        {weekStart !== todayWeekStart && (
+          <button className="btn ghost small" onClick={() => setWeekStart(todayWeekStart)}>This week</button>
+        )}
+      </div>
+
+      <WeekStatusBanner totals={totals} submission={submission} />
+
+      {submission && submission.directorComment && submission.status === 'approved' && (
+        <div className="comment-block">
+          <span className="from">Approver note</span>
+          {submission.directorComment}
+        </div>
+      )}
+
+      <div className="card" style={{padding: 0, overflowX: 'auto'}}>
+        <table className="ts-table">
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Sessions</th>
+              <th style={{textAlign: 'right'}}>Worked</th>
+              <th style={{textAlign: 'right'}}>PTO</th>
+              <th style={{textAlign: 'right'}}>Sick</th>
+              <th style={{textAlign: 'right'}}>Total</th>
+              {!locked && <th></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((d, idx) => {
+              const dayTotal = totals.perDay[idx];
+              const ents = entriesForDay(d);
+              const lv = leaveForDay(d);
+              const isToday = d === todayIso;
+              const isFuture = d > todayIso;
+              return (
+                <tr key={d} className={isToday ? 'today' : ''} style={isFuture ? {opacity: 0.7} : undefined}>
+                  <td className="day">
+                    {TC.fmtDayShort(d)}
+                    {isToday && <div className="tiny muted" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2}}>Today</div>}
+                    {isFuture && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-orange-700)'}}>Upcoming</div>}
+                  </td>
+                  <td>
+                    {ents.length === 0 && lv.length === 0 && (
+                      <span className="muted tiny">No sessions</span>
+                    )}
+                    {ents.map(e => (
+                      <SessionRow key={e.id} entry={e} now={now} locked={locked} onEdit={() => setEditing(e.id)} onDelete={() => actions.deleteEntry(e.id)} />
+                    ))}
+                    {lv.map(l => (
+                      <div key={l.id} className="tiny" style={{margin: '4px 0'}}>
+                        <strong style={{textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-caps)', fontSize: 11, color: l.type === 'pto' ? 'var(--trp-orange-700)' : 'var(--trp-pacific-700)'}}>
+                          {l.type === 'pto' ? 'PTO' : 'Sick'}
+                        </strong>
+                        {' · '}{TC.fmtHours(l.hours)} hrs
+                      </div>
+                    ))}
+                  </td>
+                  <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.work)}</td>
+                  <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.pto)}</td>
+                  <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.sick)}</td>
+                  <td className="hrs total" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.total)}</td>
+                  {!locked && (
+                    <td style={{textAlign: 'right'}}>
+                      <button className="btn ghost small" onClick={() => setEditing({ new: d })}>+ Add</button>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td></td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.workTotal)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.ptoTotal)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.sickTotal)}</td>
+              <td className="tnum total-val" style={{textAlign: 'right'}}>{TC.fmtHours(totals.total)}</td>
+              {!locked && <td></td>}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {!locked && hasUpcomingDays && submission && submission.status === 'draft' && (
+        <div className="comment-block" style={{marginTop: 16, borderLeftColor: 'var(--trp-orange)'}}>
+          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Submitting early?</span>
+          If you're submitting this week ahead of the deadline, add{' '}
+          <em>estimated</em> sessions for the remaining days now and correct
+          them later if reality differs. Use <strong>+ Add</strong> on each
+          upcoming row and check the <strong>Estimated hours</strong> box.
+        </div>
+      )}
+
+      {locked && (
+        <div className="comment-block" style={{marginTop: 16}}>
+          <span className="from">Locked</span>
+          This week is {submission.status === 'submitted' ? 'awaiting approval' : 'approved and locked'}.
+          {submission.status === 'approved' && ' Constituent edits are locked.'}
+        </div>
+      )}
+
+      {editing && (
+        <EntryEditor
+          entryId={typeof editing === 'string' ? editing : null}
+          newDate={typeof editing === 'object' ? editing.new : null}
+          userId={user.id}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      {showSubmit && (
+        <SubmitWeekModal
+          weekStart={weekStart}
+          totals={totals}
+          userId={user.id}
+          onCancel={() => setShowSubmit(false)}
+          onConfirm={() => { actions.submitWeek(user.id, weekStart); setShowSubmit(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SubmitWeekModal({ weekStart, totals, userId, onCancel, onConfirm }) {
+  const { state } = useStore();
+  const days = TC.weekDays(weekStart);
+  const todayIso = TC.isoDate(new Date());
+  const futureDays = days.filter(d => d > todayIso);
+  const hasEstimates = state.timeEntries.some(e =>
+    e.userId === userId && days.includes(e.date) && e.estimated
+  );
+  const futureWithoutData = futureDays.filter(d => {
+    const hasEntries = state.timeEntries.some(e => e.userId === userId && e.date === d);
+    const hasLeave = state.leaveEntries.some(l => l.userId === userId && l.date === d);
+    const dow = TC.parseDate(d).getDay();
+    return !hasEntries && !hasLeave && dow !== 0 && dow !== 6;
+  });
+
+  return (
+    <Modal
+      title="Submit this week for approval"
+      subtitle={`${TC.fmtRange(weekStart, days[6])} · ${TC.fmtHours(totals.total)} hrs`}
+      onClose={onCancel}
+    >
+      {futureWithoutData.length > 0 && !hasEstimates && (
+        <div className="comment-block warn" style={{margin: '0 0 14px'}}>
+          <span className="from">Heads up — {futureWithoutData.length} weekday{futureWithoutData.length === 1 ? '' : 's'} not yet logged</span>
+          You're submitting before the week is over. The days below have no
+          entries yet — if they're work days, cancel and add{' '}
+          <strong>estimated sessions</strong> first so Katrina approves the
+          full week.
+          <ul style={{margin: '8px 0 0', paddingLeft: 18}}>
+            {futureWithoutData.map(d => (
+              <li key={d} className="tiny" style={{color: 'var(--trp-coral-700)'}}>{TC.fmtDayShort(d)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {hasEstimates && (
+        <div className="comment-block" style={{margin: '0 0 14px', borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
+          <span className="from" style={{color: 'var(--trp-pacific-700)'}}>Estimates included</span>
+          This week contains <strong>estimated</strong> sessions for days that
+          haven't happened yet. They're flagged in the signed PDF. If your
+          actual hours differ later, edit Time Off / clock entries and let
+          Katrina know.
+        </div>
+      )}
+
+      <p style={{color: 'var(--fg-2)', marginBottom: 0}}>
+        Submitting locks the week from edits until your approver acts. You can
+        still edit if changes are requested.
+      </p>
+
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn" onClick={onConfirm}>Submit Week</button>
+      </div>
+    </Modal>
+  );
+}
+
+function SessionRow({ entry, now, locked, onEdit, onDelete }) {
+  const open = !entry.clockOut;
+  return (
+    <div className="tiny" style={{margin: '4px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
+      <span className="tnum">{TC.fmtTime(entry.clockIn)} → {open ? '…' : TC.fmtTime(entry.clockOut)}</span>
+      {entry.breakMinutes > 0 && <span className="muted">break {entry.breakMinutes}m</span>}
+      <span className="tnum" style={{fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(TC.entryHours(entry, now))}h</span>
+      {entry.estimated
+        ? <span className="manual-flag" style={{background: 'var(--trp-orange-100)', color: 'var(--trp-orange-700)'}}>Estimate</span>
+        : entry.manuallyEdited ? <span className="manual-flag">Edited</span> : null}
+      {open && <Badge live />}
+      {!locked && !open && (
+        <>
+          <button className="btn ghost small" onClick={onEdit}>Edit</button>
+          <button className="btn ghost small" onClick={onDelete} style={{color: 'var(--trp-coral-700)'}}>Delete</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EntryEditor({ entryId, newDate, userId, onClose }) {
+  const { state, actions } = useStore();
+  const existing = entryId ? state.timeEntries.find(e => e.id === entryId) : null;
+  const [date, setDate] = useStateTS(existing ? existing.date : newDate);
+  const [clockIn, setClockIn] = useStateTS(existing && existing.clockIn ? TC.isoToTimeInput(existing.clockIn) : '09:00');
+  const [clockOut, setClockOut] = useStateTS(existing && existing.clockOut ? TC.isoToTimeInput(existing.clockOut) : '17:00');
+  const [breakMinutes, setBreakMinutes] = useStateTS(existing ? existing.breakMinutes : 30);
+  const [estimated, setEstimated] = useStateTS(() => {
+    if (existing) return !!existing.estimated;
+    return newDate && newDate > TC.isoDate(new Date());
+  });
+
+  function save() {
+    if (existing) {
+      actions.updateEntry(existing.id, {
+        date,
+        clockIn: TC.dateAndTimeToIso(date, clockIn),
+        clockOut: TC.dateAndTimeToIso(date, clockOut),
+        breakMinutes: Number(breakMinutes) || 0,
+        estimated: !!estimated,
+      });
+    } else {
+      actions.addManualEntry(userId, { date, clockIn, clockOut, breakMinutes: Number(breakMinutes) || 0, estimated: !!estimated });
+    }
+    onClose();
+  }
+
+  let preview = 0;
+  if (date && clockIn && clockOut) {
+    const fakeEntry = {
+      clockIn: TC.dateAndTimeToIso(date, clockIn),
+      clockOut: TC.dateAndTimeToIso(date, clockOut),
+      breakMinutes: Number(breakMinutes) || 0,
+    };
+    preview = TC.entryHours(fakeEntry);
+  }
+
+  const isFuture = date && date > TC.isoDate(new Date());
+
+  return (
+    <Modal
+      title={existing ? 'Edit session' : 'Add session'}
+      subtitle={existing
+        ? 'Changes here are flagged as manually edited so your approver can see.'
+        : isFuture
+          ? 'Logging an expected/upcoming day? Check "Estimated" so it shows clearly in the signed PDF.'
+          : 'Logging a session you missed? Enter the times below.'}
+      onClose={onClose}
+    >
+      <label className="field">
+        <span className="lbl">Date</span>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+      </label>
+      <div className="field-row">
+        <label className="field">
+          <span className="lbl">Clock In</span>
+          <input type="time" value={clockIn} onChange={e => setClockIn(e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="lbl">Clock Out</span>
+          <input type="time" value={clockOut} onChange={e => setClockOut(e.target.value)} />
+        </label>
+      </div>
+      <label className="field">
+        <span className="lbl">Unpaid Break (minutes)</span>
+        <input type="number" min="0" max="480" value={breakMinutes} onChange={e => setBreakMinutes(e.target.value)} />
+      </label>
+      <label className="checkbox-row" style={{marginBottom: 12, alignItems: 'flex-start'}}>
+        <input type="checkbox" checked={estimated} onChange={e => setEstimated(e.target.checked)} style={{marginTop: 3}} />
+        <span>
+          <strong>Estimated hours</strong>
+          <div className="tiny muted" style={{marginTop: 2}}>
+            Use for days that haven't happened yet so you can submit before the deadline. Flagged clearly on the signed PDF.
+          </div>
+        </span>
+      </label>
+      <div style={{
+        background: 'var(--trp-cream-100)', padding: '12px 14px',
+        borderRadius: 'var(--radius-sm)', display: 'flex',
+        justifyContent: 'space-between', alignItems: 'center', marginTop: 4
+      }}>
+        <span style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700, color: 'var(--trp-navy)'}}>Total Hours</span>
+        <span className="tnum" style={{fontSize: 22, fontWeight: 700, color: 'var(--trp-navy)', fontFamily: 'var(--font-display)'}}>{TC.fmtHours(preview)}</span>
+      </div>
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn" onClick={save}>{existing ? 'Save changes' : 'Add session'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+Object.assign(window, { Timesheet, EntryEditor });

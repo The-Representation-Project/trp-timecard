@@ -1,0 +1,291 @@
+/* ============================================================
+   The Representation Project — Colors & Type
+   Design tokens + semantic styles
+   ============================================================ */
+
+@font-face {
+  font-family: "Lemon Milk";
+  src: url("./fonts/LEMONMILK-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Lemon Milk";
+  src: url("./fonts/LEMONMILK-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Trade Gothic LT — TRP's secondary display + UI face.
+   Used for nav, eyebrows, captions, condensed headlines.
+   Pairs with Lemon Milk for hero display. */
+@font-face {
+  font-family: "Trade Gothic LT";
+  src: url("./fonts/TradeGothicLT-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Trade Gothic LT Condensed";
+  src: url("./fonts/TradeGothicLT-BoldCondensedNo20.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Body companion: Lato (humanist sans, paired with Trade Gothic on therepproject.org) */
+@import url("https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap");
+
+:root {
+  /* ---------- BRAND COLORS (from official brand sheet) ---------- */
+  --trp-black:        #000000;
+  --trp-white:        #ffffff;
+  --trp-pacific-blue: #1fbdd6;  /* primary — logo + headlines + activist accents */
+  --trp-orange:       #ffa764;  /* secondary — warmth, hope, education */
+  --trp-navy:         #003e56;  /* deep authority — body display, footers */
+  --trp-coral:        #e85e60;  /* alarm/alert — campaign attention */
+  --trp-cream:        #faece5;  /* soft background — sections, cards */
+
+  /* Tints / shades for UI (oklch-derived to stay in family) */
+  --trp-pacific-50:   #e8f8fb;
+  --trp-pacific-100:  #c4eef5;
+  --trp-pacific-300:  #6dd4e3;
+  --trp-pacific-500:  #1fbdd6;  /* === --trp-pacific-blue */
+  --trp-pacific-700:  #0e8aa1;
+  --trp-pacific-900:  #0a5566;
+
+  --trp-navy-50:      #e6eef2;
+  --trp-navy-100:     #b8ccd5;
+  --trp-navy-500:     #00708e;
+  --trp-navy-700:     #004f6c;
+  --trp-navy-900:     #003e56;  /* === --trp-navy */
+
+  --trp-orange-100:   #ffe2c8;
+  --trp-orange-500:   #ffa764;  /* === --trp-orange */
+  --trp-orange-700:   #d97a36;
+
+  --trp-coral-100:    #f8c9ca;
+  --trp-coral-500:    #e85e60;  /* === --trp-coral */
+  --trp-coral-700:    #b13c3e;
+
+  /* Neutrals derived from cream + navy axis */
+  --trp-cream-50:     #fdf7f3;
+  --trp-cream-100:    #faece5;
+  --trp-cream-200:    #efddd2;
+  --trp-stone-300:    #c9bfb7;
+  --trp-stone-500:    #8a807a;
+  --trp-stone-700:    #4a4540;
+  --trp-stone-900:    #1c1a18;
+
+  /* ---------- SEMANTIC TOKENS ---------- */
+
+  /* Surfaces */
+  --bg-default:       var(--trp-white);
+  --bg-soft:          var(--trp-cream-100);
+  --bg-deep:          var(--trp-navy);
+  --bg-accent:        var(--trp-pacific-blue);
+  --bg-warm:          var(--trp-orange);
+  --bg-alert:         var(--trp-coral);
+
+  /* Foreground */
+  --fg-1:             var(--trp-navy);     /* primary text on light */
+  --fg-2:             var(--trp-stone-700); /* secondary text */
+  --fg-3:             var(--trp-stone-500); /* muted text, captions */
+  --fg-on-deep:       var(--trp-white);    /* text on navy */
+  --fg-on-accent:     var(--trp-white);    /* text on pacific blue */
+  --fg-link:          var(--trp-pacific-700);
+  --fg-link-hover:    var(--trp-navy);
+
+  /* Borders / dividers */
+  --border-soft:      rgba(0, 62, 86, 0.12);
+  --border-strong:    var(--trp-navy);
+
+  /* Shadows — TRP UI is mostly flat; reserve shadow for elevated cards */
+  --shadow-card:      0 1px 2px rgba(0, 62, 86, 0.06), 0 8px 24px rgba(0, 62, 86, 0.08);
+  --shadow-popover:   0 12px 40px rgba(0, 62, 86, 0.18);
+
+  /* Radii — TRP uses sharp/architectural corners on sections,
+     small radii on buttons. No bubble pills. */
+  --radius-none:      0;
+  --radius-xs:        2px;
+  --radius-sm:        4px;
+  --radius-md:        8px;
+  --radius-lg:        16px;
+
+  /* Spacing scale (8pt grid with 4 half-step) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-10: 128px;
+
+  /* ---------- TYPOGRAPHY ---------- */
+  --font-display:     "Lemon Milk", "Inter Tight", system-ui, sans-serif;
+  --font-condensed:   "Trade Gothic LT Condensed", "Trade Gothic LT", "Oswald", "Inter Tight", system-ui, sans-serif;
+  --font-ui:          "Trade Gothic LT", "Helvetica Neue", Arial, sans-serif;
+  --font-body:        "Lato", "Helvetica Neue", Arial, sans-serif;
+  --font-mono:        "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Type scale — display (Lemon Milk) is geometric all-caps,
+     used sparingly for hero, section titles, eyebrows */
+  --text-eyebrow:     0.75rem;   /* 12 */
+  --text-body-sm:     0.875rem;  /* 14 */
+  --text-body:        1rem;      /* 16 */
+  --text-body-lg:     1.125rem;  /* 18 */
+  --text-h6:          1.25rem;   /* 20 */
+  --text-h5:          1.5rem;    /* 24 */
+  --text-h4:          2rem;      /* 32 */
+  --text-h3:          2.5rem;    /* 40 */
+  --text-h2:          3.25rem;   /* 52 */
+  --text-h1:          4.25rem;   /* 68 */
+  --text-display:     6rem;      /* 96 — hero */
+
+  --leading-tight:    1.05;
+  --leading-snug:     1.2;
+  --leading-normal:   1.45;
+  --leading-loose:    1.65;
+
+  --tracking-tight:   -0.01em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.04em;
+  --tracking-caps:    0.08em;  /* used for eyebrows + display caps */
+}
+
+/* ============================================================
+   SEMANTIC ELEMENT STYLES
+   ============================================================ */
+
+html {
+  font-family: var(--font-body);
+  color: var(--fg-1);
+  background: var(--bg-default);
+  font-size: 16px;
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body { margin: 0; }
+
+/* Display headlines — Lemon Milk, ALL CAPS by default.
+   This is TRP's signature: everything in nav/section headers is uppercase. */
+h1, h2, h3, .display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-1);
+  margin: 0 0 var(--space-5);
+}
+
+h1 { font-size: var(--text-h1); }
+h2 { font-size: var(--text-h2); }
+h3 { font-size: var(--text-h3); }
+
+/* h4–h6 keep the display family but smaller, used as eyebrows / micro-titles */
+h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-1);
+  line-height: var(--leading-snug);
+  margin: 0 0 var(--space-3);
+}
+h4 { font-size: var(--text-h4); }
+h5 { font-size: var(--text-h5); }
+h6 { font-size: var(--text-h6); }
+
+/* Eyebrows — small uppercase labels above titles */
+.eyebrow {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-eyebrow);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--trp-pacific-700);
+  display: inline-block;
+}
+
+/* Body */
+p, li {
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: var(--leading-loose);
+  color: var(--fg-2);
+  margin: 0 0 var(--space-4);
+}
+.lead {
+  font-size: var(--text-body-lg);
+  line-height: var(--leading-loose);
+  color: var(--fg-1);
+}
+small, .caption {
+  font-size: var(--text-body-sm);
+  color: var(--fg-3);
+}
+
+/* Pull-quote — used heavily on TRP testimonials */
+blockquote {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-h4);
+  text-transform: uppercase;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-caps);
+  color: var(--trp-pacific-700);
+  border-left: 4px solid var(--trp-pacific-blue);
+  padding: var(--space-4) 0 var(--space-4) var(--space-5);
+  margin: var(--space-6) 0;
+}
+blockquote cite {
+  display: block;
+  margin-top: var(--space-4);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: var(--fg-2);
+}
+
+/* Links */
+a {
+  color: var(--fg-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  transition: color 120ms ease;
+}
+a:hover { color: var(--fg-link-hover); text-decoration-thickness: 2px; }
+
+/* Code */
+code, pre {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+code {
+  background: var(--trp-cream-100);
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-xs);
+}
+
+/* Hashtag chip — TRP's #NotBuyingIt / #AskHerMore vocabulary */
+.hashtag {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--trp-pacific-blue);
+}
