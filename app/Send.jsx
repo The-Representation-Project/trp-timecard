@@ -37,6 +37,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
   else { deadlineCopy = `${Math.abs(daysToDeadline)} day${Math.abs(daysToDeadline) === 1 ? '' : 's'} past deadline`; deadlineColor = 'var(--trp-coral-700)'; }
 
   const isAwaiting = payPeriod.status === 'awaiting_approval';
+  const draftWeekCount = childWeeks.filter(w => !w.sub || w.sub.status === 'draft').length;
 
   return (
     <div className="queue-card" style={{
@@ -114,8 +115,13 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
       <div className="actions">
         {!isAwaiting && (
           <button className="btn" style={{background: 'var(--trp-coral)'}} onClick={onSend}>
-            ✉ Send to Katrina for Approval
+            ✉ Submit Pay Period for Approval
           </button>
+        )}
+        {!isAwaiting && draftWeekCount > 0 && (
+          <div className="tiny muted" style={{alignSelf: 'center'}}>
+            {draftWeekCount} week{draftWeekCount === 1 ? '' : 's'} still in draft — will be auto-submitted when you send.
+          </div>
         )}
         {isAwaiting && (
           <>
@@ -175,8 +181,9 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
   }
 
   function send() {
-    // Mark locally first, THEN open mail client. (Most clients steal focus
-    // for a moment — better to commit state before that happens.)
+    // Submit any draft weeks first, then mark sent, then open the mail
+    // client. (Most clients steal focus — better to commit state first.)
+    actions.submitAllWeeksInPeriod(periodStartIso, emp.id);
     actions.markPayPeriodSent(periodStartIso, emp.id);
     setOpened(true);
     window.location.href = mailto;

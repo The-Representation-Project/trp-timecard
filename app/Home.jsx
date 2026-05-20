@@ -170,30 +170,40 @@ function Home() {
 
   // Pay periods waiting on Erika to send to Katrina, or sitting with Katrina.
   // We surface BOTH any payPeriod record marked awaiting_approval AND any
-  // period without a record where all data-bearing weeks have been submitted.
+  // period with logged data whose end date has passed (or where the user
+  // is approaching the submission deadline).
   const awaitingPP = state.payPeriods.find(
     p => p.userId === user.id && p.status === 'awaiting_approval'
   );
 
   let readyPeriod = null;
   if (!awaitingPP) {
+    // Walk every period that has any logged data, oldest first. The first
+    // one that is past its end date OR within 3 days of its deadline AND
+    // not yet approved becomes the call-to-action.
     const candidatePeriodStarts = new Set();
-    state.weekSubmissions
-      .filter(w => w.userId === user.id && (w.status === 'submitted' || w.status === 'approved'))
-      .forEach(w => {
-        TC.weekDays(w.weekStart).forEach(d => {
-          candidatePeriodStarts.add(payPeriodForDate(d, state.settings).periodStart);
-        });
-      });
+    state.timeEntries.filter(e => e.userId === user.id).forEach(e => {
+      candidatePeriodStarts.add(payPeriodForDate(e.date, state.settings).periodStart);
+    });
+    state.leaveEntries.filter(l => l.userId === user.id).forEach(l => {
+      candidatePeriodStarts.add(payPeriodForDate(l.date, state.settings).periodStart);
+    });
     for (const ps of [...candidatePeriodStarts].sort()) {
       const rec = payPeriodRecord(state, ps, user.id);
       if (rec && rec.status === 'approved') continue;
-      if (payPeriodReady(state, ps, user.id)) {
+      const pp = payPeriodForDate(ps, state.settings);
+      const totals = payPeriodTotals(state, ps, user.id);
+      if (totals.total === 0) continue;
+      const periodEnded = todayIso > pp.periodEnd;
+      const deadlineIso = payPeriodSubmitDeadline(ps, state.settings);
+      const daysToDeadline = Math.ceil((TC.parseDate(deadlineIso) - TC.parseDate(todayIso)) / 86400000);
+      const nearDeadline = daysToDeadline <= 3;
+      if (periodEnded || nearDeadline) {
         readyPeriod = rec || {
           id: 'virtual-' + ps,
           userId: user.id,
-          periodStart: ps,
-          periodEnd: payPeriodForDate(ps, state.settings).periodEnd,
+          periodStart: pp.periodStart,
+          periodEnd: pp.periodEnd,
           status: 'pending',
         };
         break;

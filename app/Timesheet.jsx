@@ -10,7 +10,6 @@ function Timesheet() {
 
   const [weekStart, setWeekStart] = useStateTS(() => TC.weekRange(new Date(), 0).startIso);
   const [editing, setEditing] = useStateTS(null); // entry id, or { new: dateIso }
-  const [showSubmit, setShowSubmit] = useStateTS(false);
 
   const now = useLiveClock();
 
@@ -39,18 +38,6 @@ function Timesheet() {
         <div>
           <div className="eyebrow">Weekly timesheet</div>
           <h1>Your Timesheet</h1>
-        </div>
-        <div className="actions">
-          {!locked && submission && submission.status === 'draft' && (
-            <button className="btn" onClick={() => setShowSubmit(true)} disabled={totals.total === 0}>
-              Submit Week for Approval
-            </button>
-          )}
-          {submission && (submission.status === 'changes_requested' || submission.status === 'rejected') && (
-            <button className="btn warm" onClick={() => setShowSubmit(true)}>
-              Resubmit Week
-            </button>
-          )}
         </div>
       </div>
 
@@ -142,21 +129,29 @@ function Timesheet() {
         </table>
       </div>
 
-      {!locked && hasUpcomingDays && submission && submission.status === 'draft' && (
+      {!locked && hasUpcomingDays && (
         <div className="comment-block" style={{marginTop: 16, borderLeftColor: 'var(--trp-orange)'}}>
-          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Submitting early?</span>
-          If you're submitting this week ahead of the deadline, add{' '}
-          <em>estimated</em> sessions for the remaining days now and correct
-          them later if reality differs. Use <strong>+ Add</strong> on each
-          upcoming row and check the <strong>Estimated hours</strong> box.
+          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Submitting the pay period early?</span>
+          If you'll need to send the pay period to Katrina before the week is
+          over, click <strong>+ Add</strong> on each upcoming row and tick{' '}
+          <strong>Estimated hours</strong>. Estimates are flagged on the
+          signed PDF.
+        </div>
+      )}
+
+      {!locked && (
+        <div className="comment-block" style={{marginTop: 12, borderLeftColor: 'var(--trp-coral)'}}>
+          <span className="from" style={{color: 'var(--trp-coral-700)'}}>Ready to send?</span>
+          When this pay period is ready for Katrina's approval, head to the{' '}
+          <strong>Home</strong> tab — the <em>Submit Pay Period for Approval</em>{' '}
+          card there sends everything in one step.
         </div>
       )}
 
       {locked && (
         <div className="comment-block" style={{marginTop: 16}}>
           <span className="from">Locked</span>
-          This week is {submission.status === 'submitted' ? 'awaiting approval' : 'approved and locked'}.
-          {submission.status === 'approved' && ' Constituent edits are locked.'}
+          This week is {submission && submission.status === 'submitted' ? 'awaiting Katrina\'s approval' : 'approved and locked'}.
         </div>
       )}
 
@@ -168,76 +163,7 @@ function Timesheet() {
           onClose={() => setEditing(null)}
         />
       )}
-
-      {showSubmit && (
-        <SubmitWeekModal
-          weekStart={weekStart}
-          totals={totals}
-          userId={user.id}
-          onCancel={() => setShowSubmit(false)}
-          onConfirm={() => { actions.submitWeek(user.id, weekStart); setShowSubmit(false); }}
-        />
-      )}
     </div>
-  );
-}
-
-function SubmitWeekModal({ weekStart, totals, userId, onCancel, onConfirm }) {
-  const { state } = useStore();
-  const days = TC.weekDays(weekStart);
-  const todayIso = TC.isoDate(new Date());
-  const futureDays = days.filter(d => d > todayIso);
-  const hasEstimates = state.timeEntries.some(e =>
-    e.userId === userId && days.includes(e.date) && e.estimated
-  );
-  const futureWithoutData = futureDays.filter(d => {
-    const hasEntries = state.timeEntries.some(e => e.userId === userId && e.date === d);
-    const hasLeave = state.leaveEntries.some(l => l.userId === userId && l.date === d);
-    const dow = TC.parseDate(d).getDay();
-    return !hasEntries && !hasLeave && dow !== 0 && dow !== 6;
-  });
-
-  return (
-    <Modal
-      title="Submit this week for approval"
-      subtitle={`${TC.fmtRange(weekStart, days[6])} · ${TC.fmtHours(totals.total)} hrs`}
-      onClose={onCancel}
-    >
-      {futureWithoutData.length > 0 && !hasEstimates && (
-        <div className="comment-block warn" style={{margin: '0 0 14px'}}>
-          <span className="from">Heads up — {futureWithoutData.length} weekday{futureWithoutData.length === 1 ? '' : 's'} not yet logged</span>
-          You're submitting before the week is over. The days below have no
-          entries yet — if they're work days, cancel and add{' '}
-          <strong>estimated sessions</strong> first so Katrina approves the
-          full week.
-          <ul style={{margin: '8px 0 0', paddingLeft: 18}}>
-            {futureWithoutData.map(d => (
-              <li key={d} className="tiny" style={{color: 'var(--trp-coral-700)'}}>{TC.fmtDayShort(d)}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {hasEstimates && (
-        <div className="comment-block" style={{margin: '0 0 14px', borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
-          <span className="from" style={{color: 'var(--trp-pacific-700)'}}>Estimates included</span>
-          This week contains <strong>estimated</strong> sessions for days that
-          haven't happened yet. They're flagged in the signed PDF. If your
-          actual hours differ later, edit Time Off / clock entries and let
-          Katrina know.
-        </div>
-      )}
-
-      <p style={{color: 'var(--fg-2)', marginBottom: 0}}>
-        Submitting locks the week from edits until your approver acts. You can
-        still edit if changes are requested.
-      </p>
-
-      <div className="modal-actions">
-        <button className="btn ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn" onClick={onConfirm}>Submit Week</button>
-      </div>
-    </Modal>
   );
 }
 

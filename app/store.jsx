@@ -553,6 +553,27 @@ function makeActions(update) {
       }));
     },
 
+    // Submit every draft week inside a pay period in one action. Used by
+    // the "Submit Pay Period" flow so Erika doesn't have to click each
+    // week individually.
+    submitAllWeeksInPeriod(periodStartIso, userId) {
+      update(s => {
+        const pp = payPeriodForDate(periodStartIso, s.settings);
+        const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
+        const submittedAt = new Date().toISOString();
+        return {
+          ...s,
+          weekSubmissions: s.weekSubmissions.map(w => {
+            if (w.userId !== userId) return w;
+            if (!weekStarts.includes(w.weekStart)) return w;
+            if (w.status === 'approved') return w;
+            // Bring drafts + changes-requested + rejected back up to submitted.
+            return { ...w, status: 'submitted', submittedAt, directorComment: '' };
+          }),
+        };
+      });
+    },
+
     // Erika has clicked "Send to Katrina for approval". This marks the pay
     // period as awaiting_approval locally so the UI shows the right state
     // while we wait for the signed receipt to come back via URL.
