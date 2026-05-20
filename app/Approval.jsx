@@ -358,7 +358,8 @@ function ApprovalSignedPage({ payload, signature }) {
     hour: 'numeric', minute: '2-digit',
   });
 
-  // Pre-built mailto back to Erika.
+  // Pre-built emails back to Erika — Gmail compose URL (opens Gmail tab)
+  // plus a plain mailto: fallback.
   const subject = `Approved: ${payload.employee.name} timecard · ${payload.pp.label}`;
   const body =
     `Hi ${payload.employee.name.split(/\s+|-/)[0]},\n\n` +
@@ -366,6 +367,10 @@ function ApprovalSignedPage({ payload, signature }) {
     `Click the link below to record the approval in your Timecard app:\n\n${receiptLink}\n\n` +
     `The signed PDF for payroll opened in a separate window — save it as PDF and forward to payroll.\n\n` +
     `${signature.signedName}\n${signature.signedTitle}`;
+  const gmailErika = 'https://mail.google.com/mail/?view=cm&fs=1' +
+    `&to=${encodeURIComponent(payload.employee.email)}` +
+    `&su=${encodeURIComponent(subject)}` +
+    `&body=${encodeURIComponent(body)}`;
   const mailtoErika = `mailto:${encodeURIComponent(payload.employee.email)}` +
     `?subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
@@ -403,10 +408,11 @@ function ApprovalSignedPage({ payload, signature }) {
         <NextStepCard
           num="1"
           color="coral"
-          title="Email approval back to Erika"
-          desc="Sends a one-click link that marks her copy of the timecard as approved."
-          cta="Open email to Erika"
-          href={mailtoErika}
+          title="Email approval back to Erika (Gmail)"
+          desc="Opens Gmail with the message + one-click approval link already filled in. Just hit Send."
+          cta="Open Gmail"
+          href={gmailErika}
+          target="_blank"
         />
         <NextStepCard
           num="2"
@@ -423,6 +429,19 @@ function ApprovalSignedPage({ payload, signature }) {
           desc="Everything's signed. The link can't be re-used; Erika will receive the approval notification."
         />
       </div>
+
+      <details style={{marginTop: 18}}>
+        <summary style={{cursor: 'pointer', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700, color: 'var(--trp-stone-700)'}}>
+          Not using Gmail? Other options
+        </summary>
+        <div style={{marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+          <a className="btn ghost small" href={mailtoErika}>↗ Open default mail app</a>
+          <button className="btn ghost small" onClick={() => {
+            navigator.clipboard.writeText(receiptLink);
+            alert('Approval link copied. Paste it into an email to ' + payload.employee.email);
+          }}>⧉ Copy link only</button>
+        </div>
+      </details>
 
       <details style={{marginTop: 24}}>
         <summary style={{cursor: 'pointer', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700, color: 'var(--trp-stone-700)'}}>
@@ -444,7 +463,7 @@ function ApprovalSignedPage({ payload, signature }) {
   );
 }
 
-function NextStepCard({ num, color, title, desc, cta, href, onClick }) {
+function NextStepCard({ num, color, title, desc, cta, href, target, onClick }) {
   const palette = {
     coral: { bg: 'var(--trp-coral-100)', border: 'var(--trp-coral)', accent: 'var(--trp-coral-700)' },
     pacific: { bg: 'var(--trp-pacific-50)', border: 'var(--trp-pacific-blue)', accent: 'var(--trp-pacific-700)' },
@@ -458,7 +477,7 @@ function NextStepCard({ num, color, title, desc, cta, href, onClick }) {
       </div>
       <div style={{fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.45, marginBottom: cta ? 12 : 0}}>{desc}</div>
       {cta && href && (
-        <a className="btn small" href={href} style={{background: palette.accent, color: 'white', textDecoration: 'none', display: 'inline-block'}}>
+        <a className="btn small" href={href} target={target} rel={target === '_blank' ? 'noopener' : undefined} style={{background: palette.accent, color: 'white', textDecoration: 'none', display: 'inline-block'}}>
           {cta}
         </a>
       )}

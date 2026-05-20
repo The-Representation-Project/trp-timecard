@@ -11,6 +11,7 @@ const { useState: useStateSend } = React;
 // every week containing data is ready (status = submitted or approved).
 
 function PayPeriodSendCard({ payPeriod, state, onSend }) {
+  const [showOffline, setShowOffline] = useStateSend(false);
   const pp = payPeriodForDate(payPeriod.periodStart, state.settings);
   const totals = payPeriodTotals(state, payPeriod.periodStart, payPeriod.userId);
   const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
@@ -132,7 +133,110 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
           </>
         )}
       </div>
+
+      {!isAwaiting && (
+        <div style={{marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--border-soft)'}}>
+          <button
+            type="button"
+            onClick={() => setShowOffline(true)}
+            style={{
+              background: 'transparent', border: 'none', padding: 0,
+              color: 'var(--trp-stone-700)', cursor: 'pointer',
+              fontFamily: 'var(--font-display)', textTransform: 'uppercase',
+              letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 10,
+            }}
+          >
+            Already approved offline? → Backfill record
+          </button>
+        </div>
+      )}
+
+      {showOffline && (
+        <OfflineApprovalModal
+          periodStartIso={pp.periodStart}
+          onClose={() => setShowOffline(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// ----- Offline / backfill approval ---------------------------------------
+//
+// For pay periods that were already approved by the supervisor BEFORE the
+// app existed — Erika has the historical hours logged for her own records
+// but doesn't need to re-route them through Katrina. Just stamps the
+// period as approved without accruing PTO/sick (which already happened).
+
+function OfflineApprovalModal({ periodStartIso, onClose }) {
+  const { state, actions } = useStore();
+  const emp = employee(state);
+  const appr = director(state);
+  const pp = payPeriodForDate(periodStartIso, state.settings);
+  const totals = payPeriodTotals(state, periodStartIso, emp.id);
+
+  // Default approval date = pay date of the period.
+  const [signedAt, setSignedAt] = useStateSend(pp.payDate);
+  const [signedName, setSignedName] = useStateSend(appr.name);
+  const [signedTitle, setSignedTitle] = useStateSend(appr.title);
+  const [comment, setComment] = useStateSend('Backfilled record — pay period was approved offline prior to using this app.');
+
+  function save() {
+    actions.markPayPeriodApprovedOffline(periodStartIso, emp.id, {
+      signedName: signedName.trim(),
+      signedTitle: signedTitle.trim(),
+      // Stamp at noon of the chosen day so timezone math doesn't sneak it
+      // into the previous calendar day.
+      signedAt: new Date(signedAt + 'T12:00:00').toISOString(),
+      comment: comment.trim(),
+    });
+    onClose();
+  }
+
+  return (
+    <Modal
+      title="Backfill approval (offline)"
+      subtitle={`${pp.label} · ${TC.fmtRange(pp.periodStart, pp.periodEnd)} · ${TC.fmtHours(totals.total)} hrs`}
+      onClose={onClose}
+    >
+      <div className="cert-box" style={{borderLeftColor: 'var(--trp-stone-500)', background: 'var(--trp-cream-100)'}}>
+        <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 4}}>
+          For historical pay periods only
+        </strong>
+        Use this when a period was already approved by your supervisor
+        through the old process and you just want a record in the app.
+        Nothing emails to Katrina, no signature is collected, and{' '}
+        <strong>no PTO/sick accrual is added</strong> (since the period
+        already ran payroll). The PDF receipt will be marked "offline /
+        backfilled" so it's not confused with a fresh approval.
+      </div>
+
+      <div className="field-row">
+        <label className="field">
+          <span className="lbl">Approval date</span>
+          <input type="date" value={signedAt} onChange={e => setSignedAt(e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="lbl">Approver name</span>
+          <input type="text" value={signedName} onChange={e => setSignedName(e.target.value)} />
+        </label>
+      </div>
+      <label className="field">
+        <span className="lbl">Approver title</span>
+        <input type="text" value={signedTitle} onChange={e => setSignedTitle(e.target.value)} />
+      </label>
+      <label className="field">
+        <span className="lbl">Note</span>
+        <textarea value={comment} onChange={e => setComment(e.target.value)} rows={2} />
+      </label>
+
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn" onClick={save} style={{background: 'var(--trp-stone-700)'}}>
+          Record as Approved (Offline)
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -149,6 +253,17 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
   const [opened, setOpened] = useStateSend(false);
 
   const link = approvalRequestUrl(state, periodStartIso);
+
+  // Gmail compose URL — opens Gmail in a new tab with subject/body
+  // prefilled. We use this instead of mailto: because Erika lives in
+  // Gmail and a raw mailto: link won't trigger the Gmail tab unless the
+  // browser is specifically configured (most aren't).
+  function gmailComposeUrl(to, subject, body) {
+    return 'https://mail.google.com/mail/?view=cm&fs=1' +
+      `&to=${encodeURIComponent(to)}` +
+      `&su=${encodeURIComponent(subject)}` +
+      `&body=${encodeURIComponent(body)}`;
+  }
 
   const deadlineIso = payPeriodSubmitDeadline(pp.periodStart, state.settings);
   const deadlineLabel = TC.parseDate(deadlineIso).toLocaleDateString(undefined, {
@@ -172,6 +287,7 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
   const mailto = `mailto:${encodeURIComponent(appr.email)}` +
     `?subject=${encodeURIComponent(subject)}` +
     `&body=${encodeURIComponent(body)}`;
+  const gmailUrl = gmailComposeUrl(appr.email, subject, body);
 
   function copyLink() {
     navigator.clipboard.writeText(link).then(() => {
@@ -180,13 +296,20 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
     });
   }
 
-  function send() {
-    // Submit any draft weeks first, then mark sent, then open the mail
-    // client. (Most clients steal focus — better to commit state first.)
+  function send(via) {
+    // Submit any draft weeks first, then mark sent. (Both happen before
+    // we open the email so the local record matches what's en route.)
     actions.submitAllWeeksInPeriod(periodStartIso, emp.id);
     actions.markPayPeriodSent(periodStartIso, emp.id);
     setOpened(true);
-    window.location.href = mailto;
+    // Always stash the link on the clipboard — if the email window fails
+    // to open or strips the URL, the user can paste it in directly.
+    navigator.clipboard.writeText(link).catch(() => {});
+    if (via === 'gmail') {
+      window.open(gmailUrl, '_blank', 'noopener');
+    } else {
+      window.location.href = mailto;
+    }
   }
 
   return (
@@ -251,10 +374,13 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
         <span className="tiny muted">in case your email app doesn't open automatically</span>
       </div>
 
-      <div className="modal-actions">
+      <div className="modal-actions" style={{flexWrap: 'wrap'}}>
         <button className="btn ghost" onClick={onClose}>Cancel</button>
-        <button className="btn" onClick={send} style={{background: 'var(--trp-coral)'}}>
-          ✉ Open email to Katrina
+        <button className="btn" onClick={() => send('default')} style={{background: 'var(--trp-stone-700)'}}>
+          ✉ Default mail app
+        </button>
+        <button className="btn" onClick={() => send('gmail')} style={{background: 'var(--trp-coral)'}}>
+          ✉ Open Gmail
         </button>
       </div>
     </Modal>

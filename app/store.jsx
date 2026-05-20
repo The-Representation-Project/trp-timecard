@@ -664,6 +664,45 @@ function makeActions(update) {
       });
     },
 
+    // Like importApprovalReceipt but for backfilling already-approved-offline
+    // pay periods. Marks the period approved with the supplied signature
+    // metadata WITHOUT accruing PTO/sick (since the period happened before
+    // the user started using this app, accrual would double-count).
+    markPayPeriodApprovedOffline(periodStartIso, userId, { signedName, signedTitle, signedAt, comment }) {
+      update(s => {
+        const pp = payPeriodForDate(periodStartIso, s.settings);
+        let payPeriods = s.payPeriods;
+        const existing = payPeriods.find(p => p.periodStart === pp.periodStart && p.userId === userId);
+        const signed = {
+          status: 'approved',
+          directorComment: comment || 'Approved offline / backfilled record.',
+          decidedAt: signedAt,
+          signedName, signedTitle,
+          signedAt,
+          offline: true,
+          accrued: { pto: 0, sick: 0, when: signedAt },
+        };
+        if (existing) {
+          payPeriods = payPeriods.map(p => p.id === existing.id ? { ...p, ...signed } : p);
+        } else {
+          payPeriods = [...payPeriods, {
+            id: 'pp-' + window.TC.uid(),
+            userId,
+            periodStart: pp.periodStart,
+            periodEnd: pp.periodEnd,
+            ...signed,
+          }];
+        }
+        const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
+        const weekSubmissions = s.weekSubmissions.map(w =>
+          (weekStarts.includes(w.weekStart) && w.userId === userId)
+            ? { ...w, status: 'approved', decidedAt: signedAt, directorComment: signed.directorComment }
+            : w
+        );
+        return { ...s, payPeriods, weekSubmissions };
+      });
+    },
+
     // If Erika needs to make corrections after sending, this rewinds the
     // pay period to draft so she can resubmit. (Constituent weeks unlock
     // too, since the whole submission is being replaced.)
