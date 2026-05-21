@@ -101,7 +101,62 @@ const StoreContext = React.createContext(null);
 
 function StoreProvider({ children }) {
   const [state, setState] = React.useState(getInitialState);
-  React.useEffect(() => { saveState(state); }, [state]);
+
+  // Are we currently writing because we just received remote data?
+  // (Prevents the local save effect from echoing back to the cloud.)
+  const skipNextSaveRef = React.useRef(false);
+
+  // Local cache always — same as before. Cloud save layered on top.
+  React.useEffect(() => {
+    saveState(state);
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
+    const cs = window.CloudSync;
+    if (cs && cs.status() === 'signed-in') {
+      // Debounce: only the last change in a 600ms window hits the network.
+      const t = setTimeout(() => { cs.save(state); }, 600);
+      return () => clearTimeout(t);
+    }
+  }, [state]);
+
+  // When CloudSync signs in or a remote write arrives, pull the latest
+  // cloud state into local state.
+  React.useEffect(() => {
+    const cs = window.CloudSync;
+    if (!cs) return;
+
+    async function pullRemote() {
+      if (cs.status() !== 'signed-in') return;
+      const { data, error } = await cs.load();
+      if (error || !data) return;
+      // Defensive merge with our schema defaults so any newly-added
+      // settings keys don't blow up older cloud rows.
+      const base = emptyState();
+      const merged = {
+        ...base,
+        ...data,
+        users: base.users.map(u => {
+          const found = (data.users || []).find(x => x.id === u.id);
+          return found ? { ...u, ...found } : u;
+        }),
+        settings: { ...base.settings, ...(data.settings || {}) },
+        session: { ...base.session, ...(data.session || {}) },
+      };
+      skipNextSaveRef.current = true;
+      setState(merged);
+    }
+
+    const offStatus = cs.onStatusChange(s => { if (s === 'signed-in') pullRemote(); });
+    const offRemote = cs.onRemoteData(remote => {
+      skipNextSaveRef.current = true;
+      setState(prev => ({ ...prev, ...remote }));
+    });
+    // Initial pull if we're already signed-in at mount.
+    pullRemote();
+    return () => { offStatus(); offRemote(); };
+  }, []);
 
   const update = React.useCallback((fn) => {
     setState(prev => (typeof fn === 'function' ? fn(prev) : fn));
@@ -773,6 +828,13 @@ function makeActions(update) {
     // expose via console: `window.__tc.actions.factoryReset()`.
     factoryReset() {
       update(() => emptyState());
+    },
+
+    // Replace local state wholesale. Used when (a) uploading local data
+    // to a fresh cloud row, or (b) downloading cloud data into a fresh
+    // device. Does NOT skip cloud save — call this when you mean to push.
+    replaceAll(newState) {
+      update(() => ({ ...emptyState(), ...newState }));
     },
   };
 }

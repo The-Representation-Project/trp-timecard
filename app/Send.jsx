@@ -11,7 +11,9 @@ const { useState: useStateSend } = React;
 // every week containing data is ready (status = submitted or approved).
 
 function PayPeriodSendCard({ payPeriod, state, onSend }) {
+  const { actions } = useStore();
   const [showOffline, setShowOffline] = useStateSend(false);
+  const [confirmCancel, setConfirmCancel] = useStateSend(false);
   const pp = payPeriodForDate(payPeriod.periodStart, state.settings);
   const totals = payPeriodTotals(state, payPeriod.periodStart, payPeriod.userId);
   const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
@@ -127,12 +129,57 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
         {isAwaiting && (
           <>
             <button className="btn ghost" onClick={onSend}>↻ Resend approval link</button>
-            <div className="tiny muted" style={{marginLeft: 'auto', alignSelf: 'center'}}>
+            <div className="tiny muted" style={{marginLeft: 'auto', alignSelf: 'center', maxWidth: 280, textAlign: 'right'}}>
               Waiting on Katrina's signature. The receipt link she emails back will auto-record the approval here.
             </div>
           </>
         )}
       </div>
+
+      {isAwaiting && (
+        <div style={{
+          marginTop: 12, paddingTop: 12,
+          borderTop: '1px dashed var(--border-soft)',
+          display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-display)', textTransform: 'uppercase',
+            letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 10,
+            color: 'var(--trp-stone-700)',
+          }}>
+            Sent by mistake?
+          </div>
+          <button
+            type="button"
+            onClick={() => setConfirmCancel(true)}
+            style={{
+              background: 'transparent', border: 'none', padding: 0,
+              color: 'var(--trp-coral-700)', cursor: 'pointer',
+              fontFamily: 'var(--font-display)', textTransform: 'uppercase',
+              letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 10,
+              textDecoration: 'underline',
+            }}
+            title="Pull this pay period back so you can edit or re-send it"
+          >
+            ✕ Cancel approval request
+          </button>
+          <span style={{color: 'var(--border-strong)', fontSize: 10}}>·</span>
+          <button
+            type="button"
+            onClick={() => setShowOffline(true)}
+            style={{
+              background: 'transparent', border: 'none', padding: 0,
+              color: 'var(--trp-stone-700)', cursor: 'pointer',
+              fontFamily: 'var(--font-display)', textTransform: 'uppercase',
+              letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 10,
+              textDecoration: 'underline',
+            }}
+            title="Stamp this period as approved without going through Katrina — for historical / backfilled records"
+          >
+            ✓ Mark as approved offline instead
+          </button>
+        </div>
+      )}
 
       {!isAwaiting && (
         <div style={{marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--border-soft)'}}>
@@ -149,6 +196,39 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
             Already approved offline? → Backfill record
           </button>
         </div>
+      )}
+
+      {confirmCancel && (
+        <Modal
+          title="Cancel approval request?"
+          subtitle={`${pp.label} · ${TC.fmtRange(pp.periodStart, pp.periodEnd)}`}
+          onClose={() => setConfirmCancel(false)}
+          maxWidth={460}
+        >
+          <div className="cert-box" style={{borderLeftColor: 'var(--trp-coral)'}}>
+            <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 4}}>
+              This will…
+            </strong>
+            Move <strong>{pp.label}</strong> back to draft so you can edit the
+            hours or re-send it. Any approval link Katrina already has will
+            stop working once you re-send a new one. <strong>Nothing is
+            emailed to Katrina</strong> — if she already signed, just wait for
+            her receipt link instead of cancelling.
+          </div>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setConfirmCancel(false)}>Keep waiting</button>
+            <button
+              className="btn"
+              style={{background: 'var(--trp-coral)'}}
+              onClick={() => {
+                actions.cancelPayPeriodSend(pp.periodStart, payPeriod.userId);
+                setConfirmCancel(false);
+              }}
+            >
+              ✕ Yes, cancel approval request
+            </button>
+          </div>
+        </Modal>
       )}
 
       {showOffline && (

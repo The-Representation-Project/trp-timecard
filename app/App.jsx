@@ -30,6 +30,9 @@ function App() {
   // Toast for when a receipt has just been imported from a #receipt= link.
   const [receiptToast, setReceiptToast] = useStateA(null);
 
+  // Cloud settings modal toggle.
+  const [showCloud, setShowCloud] = useStateA(false);
+
   // Handle inbound receipt links: import + clean the URL + show a toast.
   useEffectA(() => {
     function handleHash() {
@@ -78,9 +81,14 @@ function App() {
             </button>
           ))}
         </div>
-        <UserChip user={user} />
+        <div style={{display: 'flex', gap: 10, alignItems: 'center'}}>
+          <CloudStatusBadge onClick={() => setShowCloud(true)} />
+          <UserChip user={user} />
+        </div>
       </div>
       {renderPage()}
+
+      {showCloud && <CloudSettingsModal onClose={() => setShowCloud(false)} />}
 
       {receiptToast && (
         <ReceiptImportedToast

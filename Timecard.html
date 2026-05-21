@@ -33,11 +33,17 @@
   <script src="app/util.js"></script>
   <script src="app/printReceipt.js"></script>
 
+  <!-- Supabase SDK (for optional cloud sync). Loaded eagerly so
+       magic-link redirects are handled at page-load. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="app/cloudSync.js"></script>
+
   <!-- React components (order matters: dependencies before dependents) -->
   <script type="text/babel" src="app/store.jsx"></script>
   <script type="text/babel" src="app/ui.jsx"></script>
   <script type="text/babel" src="app/PayPeriodApproved.jsx"></script>
   <script type="text/babel" src="app/Send.jsx"></script>
+  <script type="text/babel" src="app/CloudSettings.jsx"></script>
   <script type="text/babel" src="app/Home.jsx"></script>
   <script type="text/babel" src="app/Timesheet.jsx"></script>
   <script type="text/babel" src="app/TimeOff.jsx"></script>

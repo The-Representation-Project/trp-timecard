@@ -177,10 +177,10 @@ function Home() {
   );
 
   let readyPeriod = null;
-  if (!awaitingPP) {
-    // Walk every period that has any logged data, oldest first. The first
-    // one that is past its end date OR within 3 days of its deadline AND
-    // not yet approved becomes the call-to-action.
+  {
+    // Walk every period that has any logged data, oldest first. Skip the
+    // one currently sitting with the approver (it's already shown via
+    // awaitingPP). The first qualifying period becomes the call-to-action.
     const candidatePeriodStarts = new Set();
     state.timeEntries.filter(e => e.userId === user.id).forEach(e => {
       candidatePeriodStarts.add(payPeriodForDate(e.date, state.settings).periodStart);
@@ -188,17 +188,25 @@ function Home() {
     state.leaveEntries.filter(l => l.userId === user.id).forEach(l => {
       candidatePeriodStarts.add(payPeriodForDate(l.date, state.settings).periodStart);
     });
+    // Always include the current pay period as a candidate, even if no
+    // hours are logged yet — so the user can preview "next up" while an
+    // older one sits awaiting.
+    candidatePeriodStarts.add(payPeriodForDate(todayIso, state.settings).periodStart);
     for (const ps of [...candidatePeriodStarts].sort()) {
+      if (awaitingPP && ps === awaitingPP.periodStart) continue;
       const rec = payPeriodRecord(state, ps, user.id);
       if (rec && rec.status === 'approved') continue;
       const pp = payPeriodForDate(ps, state.settings);
       const totals = payPeriodTotals(state, ps, user.id);
-      if (totals.total === 0) continue;
+      const isCurrent = ps === payPeriodForDate(todayIso, state.settings).periodStart;
+      if (totals.total === 0 && !isCurrent) continue;
       const periodEnded = todayIso > pp.periodEnd;
       const deadlineIso = payPeriodSubmitDeadline(ps, state.settings);
       const daysToDeadline = Math.ceil((TC.parseDate(deadlineIso) - TC.parseDate(todayIso)) / 86400000);
       const nearDeadline = daysToDeadline <= 3;
-      if (periodEnded || nearDeadline) {
+      // When there's an awaiting period, also surface the current one so
+      // the user isn't blocked from sending it.
+      if (periodEnded || nearDeadline || (awaitingPP && isCurrent && totals.total > 0)) {
         readyPeriod = rec || {
           id: 'virtual-' + ps,
           userId: user.id,
@@ -236,8 +244,20 @@ function Home() {
           />
         </div>
       )}
-      {!awaitingPP && readyPeriod && (
+      {readyPeriod && (
         <div style={{marginBottom: 24}}>
+          {awaitingPP && (
+            <div style={{
+              fontFamily: 'var(--font-display)', textTransform: 'uppercase',
+              letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 11,
+              color: 'var(--trp-stone-700)', marginBottom: 10,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{height: 1, background: 'var(--border-soft)', flex: 1}} />
+              Next pay period
+              <span style={{height: 1, background: 'var(--border-soft)', flex: 1}} />
+            </div>
+          )}
           <PayPeriodSendCard
             payPeriod={readyPeriod}
             state={state}
