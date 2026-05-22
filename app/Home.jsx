@@ -219,6 +219,17 @@ function Home() {
     }
   }
 
+  // Stale active clock = we're still "clocked in" against an entry that
+  // started on a previous day (forgot to clock out). Surface a banner
+  // that lets the user fix it without having to dig into the timesheet.
+  const staleActiveEntry = (() => {
+    if (!state.activeClock || state.activeClock.userId !== user.id) return null;
+    const e = state.timeEntries.find(x => x.id === state.activeClock.entryId);
+    if (!e) return null;
+    if (e.date >= todayIso) return null;
+    return e;
+  })();
+
   return (
     <div className="page">
       <div className="page-header">
@@ -228,6 +239,10 @@ function Home() {
         </div>
         <div className="muted tiny">{today.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
       </div>
+
+      {staleActiveEntry && (
+        <StaleClockBanner entry={staleActiveEntry} onEdit={() => setManualEditing(staleActiveEntry.id)} />
+      )}
 
       {recentApprovedPP && (
         <div style={{marginBottom: 24}}>
@@ -376,3 +391,79 @@ function WeekStatusMini({ totals, submission }) {
 }
 
 Object.assign(window, { Home });
+
+function StaleClockBanner({ entry, onEdit }) {
+  const { actions } = useStore();
+  const startedLabel = new Date(entry.clockIn).toLocaleString(undefined, {
+    weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+  const daysAgo = Math.max(1, Math.floor((Date.now() - new Date(entry.clockIn).getTime()) / 86400000));
+
+  function closeOutAtEndOfDay() {
+    // Default fix: stamp clockOut at clockIn + 8h (capped at 23:59 of the
+    // same day) so the entry stays on the day it started.
+    const inDate = new Date(entry.clockIn);
+    let out = new Date(inDate.getTime() + 8 * 3600 * 1000);
+    const sameDay = out.toDateString() === inDate.toDateString();
+    if (!sameDay) {
+      out = new Date(inDate);
+      out.setHours(23, 59, 0, 0);
+    }
+    actions.updateEntry(entry.id, { clockOut: out.toISOString() });
+  }
+
+  function discard() {
+    if (!confirm('Discard this open session entirely? The clock-in will be deleted.')) return;
+    actions.deleteEntry(entry.id);
+  }
+
+  return (
+    <div style={{
+      marginBottom: 24,
+      padding: '18px 20px',
+      background: 'linear-gradient(135deg, var(--trp-coral-100) 0%, white 100%)',
+      border: '1px solid var(--trp-coral)',
+      borderLeft: '6px solid var(--trp-coral)',
+      borderRadius: 'var(--radius-md)',
+      display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap',
+    }}>
+      <div style={{
+        flexShrink: 0, width: 44, height: 44, borderRadius: '50%',
+        background: 'var(--trp-coral)', color: 'white',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22, fontWeight: 700,
+      }}>⚠</div>
+      <div style={{flex: '1 1 320px', minWidth: 0}}>
+        <div style={{
+          fontFamily: 'var(--font-display)', textTransform: 'uppercase',
+          letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700,
+          color: 'var(--trp-coral-700)', marginBottom: 4,
+        }}>
+          Forgot to clock out · {daysAgo} day{daysAgo === 1 ? '' : 's'} ago
+        </div>
+        <div style={{fontWeight: 700, color: 'var(--trp-navy)', fontSize: 16, marginBottom: 4}}>
+          You're still clocked in from {startedLabel}
+        </div>
+        <div className="tiny muted" style={{marginBottom: 12}}>
+          The timer kept running. Set the correct clock-out time before
+          you can clock in fresh today.
+        </div>
+        <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+          <button className="btn" onClick={onEdit} style={{background: 'var(--trp-coral)'}}>
+            ✎ Set clock-out time
+          </button>
+          <button className="btn ghost" onClick={closeOutAtEndOfDay}>
+            Close at end of day (clock-in + 8h)
+          </button>
+          <button
+            className="btn ghost"
+            onClick={discard}
+            style={{color: 'var(--trp-coral-700)'}}
+          >
+            Discard this session
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

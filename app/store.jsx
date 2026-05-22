@@ -567,7 +567,16 @@ function makeActions(update) {
     },
 
     deleteEntry(id) {
-      update(s => ({ ...s, timeEntries: s.timeEntries.filter(e => e.id !== id) }));
+      update(s => {
+        const next = { ...s, timeEntries: s.timeEntries.filter(e => e.id !== id) };
+        // If we just deleted the live entry, clear the active clock too so
+        // the timer stops and the Clock-In button comes back.
+        if (s.activeClock && s.activeClock.entryId === id) {
+          next.activeClock = null;
+          next.activeLunch = null;
+        }
+        return next;
+      });
     },
 
     addManualEntry(userId, { date, clockIn, clockOut, breakMinutes, estimated = false }) {
@@ -577,7 +586,7 @@ function makeActions(update) {
           id: 't-' + window.TC.uid(),
           userId, date,
           clockIn: window.TC.dateAndTimeToIso(date, clockIn),
-          clockOut: window.TC.dateAndTimeToIso(date, clockOut),
+          clockOut: clockOut ? window.TC.dateAndTimeToIso(date, clockOut) : null,
           breakMinutes: breakMinutes || 0,
           manuallyEdited: true,
           estimated: !!estimated,

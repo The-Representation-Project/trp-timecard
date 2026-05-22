@@ -169,16 +169,31 @@ function Timesheet() {
 
 function SessionRow({ entry, now, locked, onEdit, onDelete }) {
   const open = !entry.clockOut;
+  // An "abandoned" open session = clocked in on a prior day and never
+  // clocked out. Surface a clear warning + always allow edit/delete so
+  // the user can fix it.
+  const todayIso = TC.isoDate(new Date(now));
+  const abandoned = open && entry.date < todayIso;
   return (
     <div className="tiny" style={{margin: '4px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
       <span className="tnum">{TC.fmtTime(entry.clockIn)} → {open ? '…' : TC.fmtTime(entry.clockOut)}</span>
       {entry.breakMinutes > 0 && <span className="muted">break {entry.breakMinutes}m</span>}
-      <span className="tnum" style={{fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(TC.entryHours(entry, now))}h</span>
+      {!abandoned && (
+        <span className="tnum" style={{fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(TC.entryHours(entry, now))}h</span>
+      )}
       {entry.estimated
         ? <span className="manual-flag" style={{background: 'var(--trp-orange-100)', color: 'var(--trp-orange-700)'}}>Estimate</span>
         : entry.manuallyEdited ? <span className="manual-flag">Edited</span> : null}
-      {open && <Badge live />}
-      {!locked && !open && (
+      {open && !abandoned && <Badge live />}
+      {abandoned && (
+        <span className="manual-flag" style={{
+          background: 'var(--trp-coral-100)', color: 'var(--trp-coral-700)',
+          fontWeight: 700,
+        }}>
+          ⚠ No clock-out — edit to set end time
+        </span>
+      )}
+      {!locked && (
         <>
           <button className="btn ghost small" onClick={onEdit}>Edit</button>
           <button className="btn ghost small" onClick={onDelete} style={{color: 'var(--trp-coral-700)'}}>Delete</button>
@@ -192,37 +207,55 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
   const { state, actions } = useStore();
   const existing = entryId ? state.timeEntries.find(e => e.id === entryId) : null;
   const [date, setDate] = useStateTS(existing ? existing.date : newDate);
-  const [clockIn, setClockIn] = useStateTS(existing && existing.clockIn ? TC.isoToTimeInput(existing.clockIn) : '09:00');
-  const [clockOut, setClockOut] = useStateTS(existing && existing.clockOut ? TC.isoToTimeInput(existing.clockOut) : '17:00');
-  const [breakMinutes, setBreakMinutes] = useStateTS(existing ? existing.breakMinutes : 30);
+  // For NEW sessions, leave fields blank — the user fills in only what
+  // actually happened. (No auto-9-to-5 with a 30-min break.) For
+  // existing entries, prefill with whatever's already saved.
+  const [clockIn, setClockIn] = useStateTS(existing && existing.clockIn ? TC.isoToTimeInput(existing.clockIn) : '');
+  const [clockOut, setClockOut] = useStateTS(existing && existing.clockOut ? TC.isoToTimeInput(existing.clockOut) : '');
+  const [breakMinutes, setBreakMinutes] = useStateTS(existing ? String(existing.breakMinutes ?? '') : '');
   const [estimated, setEstimated] = useStateTS(() => {
     if (existing) return !!existing.estimated;
     return newDate && newDate > TC.isoDate(new Date());
   });
 
   function save() {
+    if (!clockIn) {
+      alert('Please enter a Clock In time.');
+      return;
+    }
+    const clockInIso = TC.dateAndTimeToIso(date, clockIn);
+    const clockOutIso = clockOut ? TC.dateAndTimeToIso(date, clockOut) : null;
+    const breakNum = breakMinutes === '' ? 0 : (Number(breakMinutes) || 0);
     if (existing) {
       actions.updateEntry(existing.id, {
         date,
-        clockIn: TC.dateAndTimeToIso(date, clockIn),
-        clockOut: TC.dateAndTimeToIso(date, clockOut),
-        breakMinutes: Number(breakMinutes) || 0,
+        clockIn: clockInIso,
+        clockOut: clockOutIso,
+        breakMinutes: breakNum,
         estimated: !!estimated,
       });
     } else {
-      actions.addManualEntry(userId, { date, clockIn, clockOut, breakMinutes: Number(breakMinutes) || 0, estimated: !!estimated });
+      actions.addManualEntry(userId, {
+        date,
+        clockIn,
+        clockOut: clockOut || null,
+        breakMinutes: breakNum,
+        estimated: !!estimated,
+      });
     }
     onClose();
   }
 
   let preview = 0;
+  let hasPreview = false;
   if (date && clockIn && clockOut) {
     const fakeEntry = {
       clockIn: TC.dateAndTimeToIso(date, clockIn),
       clockOut: TC.dateAndTimeToIso(date, clockOut),
-      breakMinutes: Number(breakMinutes) || 0,
+      breakMinutes: breakMinutes === '' ? 0 : (Number(breakMinutes) || 0),
     };
     preview = TC.entryHours(fakeEntry);
+    hasPreview = true;
   }
 
   const isFuture = date && date > TC.isoDate(new Date());
@@ -234,7 +267,7 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
         ? 'Changes here are flagged as manually edited so your approver can see.'
         : isFuture
           ? 'Logging an expected/upcoming day? Check "Estimated" so it shows clearly in the signed PDF.'
-          : 'Logging a session you missed? Enter the times below.'}
+          : 'Fill in only what happened — leave Clock Out and Break blank if you didn\'t clock out or take an unpaid break.'}
       onClose={onClose}
     >
       <label className="field">
@@ -253,7 +286,14 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
       </div>
       <label className="field">
         <span className="lbl">Unpaid Break (minutes)</span>
-        <input type="number" min="0" max="480" value={breakMinutes} onChange={e => setBreakMinutes(e.target.value)} />
+        <input
+          type="number"
+          min="0"
+          max="480"
+          placeholder={existing ? '' : 'Leave blank if none'}
+          value={breakMinutes}
+          onChange={e => setBreakMinutes(e.target.value)}
+        />
       </label>
       <label className="checkbox-row" style={{marginBottom: 12, alignItems: 'flex-start'}}>
         <input type="checkbox" checked={estimated} onChange={e => setEstimated(e.target.checked)} style={{marginTop: 3}} />
@@ -270,7 +310,9 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
         justifyContent: 'space-between', alignItems: 'center', marginTop: 4
       }}>
         <span style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700, color: 'var(--trp-navy)'}}>Total Hours</span>
-        <span className="tnum" style={{fontSize: 22, fontWeight: 700, color: 'var(--trp-navy)', fontFamily: 'var(--font-display)'}}>{TC.fmtHours(preview)}</span>
+        <span className="tnum" style={{fontSize: 22, fontWeight: 700, color: hasPreview ? 'var(--trp-navy)' : 'var(--trp-stone-500)', fontFamily: 'var(--font-display)'}}>
+          {hasPreview ? TC.fmtHours(preview) : (clockIn && !clockOut ? 'Open — no clock-out yet' : '—')}
+        </span>
       </div>
       <div className="modal-actions">
         <button className="btn ghost" onClick={onClose}>Cancel</button>
