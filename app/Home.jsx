@@ -204,9 +204,13 @@ function Home() {
       const deadlineIso = payPeriodSubmitDeadline(ps, state.settings);
       const daysToDeadline = Math.ceil((TC.parseDate(deadlineIso) - TC.parseDate(todayIso)) / 86400000);
       const nearDeadline = daysToDeadline <= 3;
-      // When there's an awaiting period, also surface the current one so
-      // the user isn't blocked from sending it.
-      if (periodEnded || nearDeadline || (awaitingPP && isCurrent && totals.total > 0)) {
+      // Surface the card if:
+      //   - the period is over (ready to send)
+      //   - we're within 3 days of the deadline (nudge)
+      //   - it's the current period AND has any logged hours (so the
+      //     "Submit for approval" card appears the moment work starts
+      //     in a fresh period — right after the previous one is approved)
+      if (periodEnded || nearDeadline || (isCurrent && totals.total > 0)) {
         readyPeriod = rec || {
           id: 'virtual-' + ps,
           userId: user.id,
