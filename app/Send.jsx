@@ -40,7 +40,6 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
   else { deadlineCopy = `${Math.abs(daysToDeadline)} day${Math.abs(daysToDeadline) === 1 ? '' : 's'} past deadline`; deadlineColor = 'var(--trp-coral-700)'; }
 
   const isAwaiting = payPeriod.status === 'awaiting_approval';
-  const draftWeekCount = childWeeks.filter(w => !w.sub || w.sub.status === 'draft').length;
 
   return (
     <div className="queue-card" style={{
@@ -97,6 +96,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
             <th style={{textAlign: 'right'}}>Worked</th>
             <th style={{textAlign: 'right'}}>PTO</th>
             <th style={{textAlign: 'right'}}>Sick</th>
+            <th style={{textAlign: 'right'}}>Holiday</th>
             <th style={{textAlign: 'right'}}>Total</th>
           </tr>
         </thead>
@@ -109,6 +109,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.workTotal)}</td>
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.ptoTotal)}</td>
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.sickTotal)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.holidayTotal || 0)}</td>
               <td className="tnum" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(tot.total)}</td>
             </tr>
           ))}
@@ -120,11 +121,6 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
           <button className="btn" style={{background: 'var(--trp-coral)'}} onClick={onSend}>
             ✉ Submit Pay Period for Approval
           </button>
-        )}
-        {!isAwaiting && draftWeekCount > 0 && (
-          <div className="tiny muted" style={{alignSelf: 'center'}}>
-            {draftWeekCount} week{draftWeekCount === 1 ? '' : 's'} still in draft — will be auto-submitted when you send.
-          </div>
         )}
         {isAwaiting && (
           <>

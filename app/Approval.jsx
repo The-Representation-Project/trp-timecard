@@ -100,7 +100,7 @@ function ApprovalReviewPage({ payload, onSign }) {
         </div>
       </div>
 
-      <div className="grid grid-3 mb-5">
+      <div className="grid grid-4 mb-5">
         <div className="stat">
           <div className="eyebrow">Worked</div>
           <div className="value">{TC.fmtHours(totals.work)}<span style={{fontSize: 16, opacity: 0.5}}>hrs</span></div>
@@ -113,6 +113,10 @@ function ApprovalReviewPage({ payload, onSign }) {
           <div className="eyebrow">Sick</div>
           <div className="value">{TC.fmtHours(totals.sick)}<span style={{fontSize: 16, opacity: 0.5}}>hrs</span></div>
         </div>
+        <div className="stat" style={{background: 'var(--trp-coral-100)'}}>
+          <div className="eyebrow" style={{color: 'var(--trp-coral-700)'}}>Holiday</div>
+          <div className="value">{TC.fmtHours(totals.holiday || 0)}<span style={{fontSize: 16, opacity: 0.5}}>hrs</span></div>
+        </div>
       </div>
 
       <h3 className="card-title" style={{marginBottom: 12}}>Week-by-week breakdown</h3>
@@ -124,6 +128,7 @@ function ApprovalReviewPage({ payload, onSign }) {
               <th style={{textAlign: 'right'}}>Worked</th>
               <th style={{textAlign: 'right'}}>PTO</th>
               <th style={{textAlign: 'right'}}>Sick</th>
+              <th style={{textAlign: 'right'}}>Holiday</th>
               <th style={{textAlign: 'right'}}>Total</th>
             </tr>
           </thead>
@@ -134,6 +139,7 @@ function ApprovalReviewPage({ payload, onSign }) {
                 <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.work)}</td>
                 <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.pto)}</td>
                 <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.sick)}</td>
+                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.holiday || 0)}</td>
                 <td className="tnum total" style={{textAlign: 'right'}}>{TC.fmtHours(w.total)}</td>
               </tr>
             ))}
@@ -144,6 +150,7 @@ function ApprovalReviewPage({ payload, onSign }) {
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.work)}</td>
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.pto)}</td>
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.sick)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.holiday || 0)}</td>
               <td className="tnum total-val" style={{textAlign: 'right'}}>{TC.fmtHours(totals.total)}</td>
             </tr>
           </tfoot>
@@ -202,14 +209,22 @@ function DailyDetail({ weeks }) {
                       : s.ed ? <span className="manual-flag">Edited</span> : null}
                   </div>
                 ))}
-                {(r.leaves || []).map((l, i) => (
-                  <div key={'l'+i} className="tiny" style={{margin: '3px 0'}}>
-                    <strong style={{textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-caps)', fontSize: 11, color: l.t === 'pto' ? 'var(--trp-orange-700)' : 'var(--trp-pacific-700)'}}>
-                      {l.t === 'pto' ? 'PTO' : 'Sick'}
-                    </strong>
-                    {' · '}{TC.fmtHours(l.h)} hrs
-                  </div>
-                ))}
+                {(r.leaves || []).map((l, i) => {
+                  const meta = l.t === 'pto'
+                    ? { label: 'PTO', color: 'var(--trp-orange-700)' }
+                    : l.t === 'sick'
+                      ? { label: 'Sick', color: 'var(--trp-pacific-700)' }
+                      : { label: 'Holiday', color: 'var(--trp-coral-700)' };
+                  return (
+                    <div key={'l'+i} className="tiny" style={{margin: '3px 0'}}>
+                      <strong style={{textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-caps)', fontSize: 11, color: meta.color}}>
+                        {meta.label}
+                      </strong>
+                      {' · '}{TC.fmtHours(l.h)} hrs
+                      {l.n && <span className="muted" style={{marginLeft: 6}}>· {l.n}</span>}
+                    </div>
+                  );
+                })}
               </td>
               <td className="tnum total" style={{textAlign: 'right'}}>{TC.fmtHours(dayHrs)}</td>
               <td className="tiny muted">

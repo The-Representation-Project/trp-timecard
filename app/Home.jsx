@@ -300,7 +300,10 @@ function Home() {
             <div className="eyebrow">This Week</div>
             <div className="value">{TC.fmtHours(week.total)}<span style={{fontSize: 16, marginLeft: 4, opacity: 0.5}}>/ 40</span></div>
             <div className="sub">
-              {TC.fmtHours(week.workTotal)} worked · {TC.fmtHours(week.ptoTotal)} PTO · {TC.fmtHours(week.sickTotal)} sick
+              {TC.fmtHours(week.workTotal)} worked
+              {week.ptoTotal > 0 && ` · ${TC.fmtHours(week.ptoTotal)} PTO`}
+              {week.sickTotal > 0 && ` · ${TC.fmtHours(week.sickTotal)} sick`}
+              {week.holidayTotal > 0 && ` · ${TC.fmtHours(week.holidayTotal)} holiday`}
             </div>
           </div>
         </div>
@@ -354,14 +357,17 @@ function Home() {
                   </td>
                 </tr>
               ))}
-              {todayLeave.map(l => (
-                <tr key={l.id}>
-                  <td style={{textTransform: 'capitalize'}}>{l.type === 'pto' ? 'PTO' : 'Sick'} <Badge status={l.status} /></td>
-                  <td>—</td><td>—</td><td>—</td>
-                  <td className="tnum total">{TC.fmtHours(l.hours)}</td>
-                  <td></td>
-                </tr>
-              ))}
+              {todayLeave.map(l => {
+                const label = l.type === 'pto' ? 'PTO' : l.type === 'sick' ? 'Sick' : 'Holiday';
+                return (
+                  <tr key={l.id}>
+                    <td>{label}{l.name && <span className="tiny muted" style={{marginLeft: 8}}>{l.name}</span>} <Badge status={l.status} /></td>
+                    <td>—</td><td>—</td><td>—</td>
+                    <td className="tnum total">{TC.fmtHours(l.hours)}</td>
+                    <td></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

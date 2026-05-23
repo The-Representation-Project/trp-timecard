@@ -68,6 +68,7 @@ function Timesheet() {
               <th style={{textAlign: 'right'}}>Worked</th>
               <th style={{textAlign: 'right'}}>PTO</th>
               <th style={{textAlign: 'right'}}>Sick</th>
+              <th style={{textAlign: 'right'}}>Holiday</th>
               <th style={{textAlign: 'right'}}>Total</th>
               {!locked && <th></th>}
             </tr>
@@ -93,18 +94,27 @@ function Timesheet() {
                     {ents.map(e => (
                       <SessionRow key={e.id} entry={e} now={now} locked={locked} onEdit={() => setEditing(e.id)} onDelete={() => actions.deleteEntry(e.id)} />
                     ))}
-                    {lv.map(l => (
-                      <div key={l.id} className="tiny" style={{margin: '4px 0'}}>
-                        <strong style={{textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-caps)', fontSize: 11, color: l.type === 'pto' ? 'var(--trp-orange-700)' : 'var(--trp-pacific-700)'}}>
-                          {l.type === 'pto' ? 'PTO' : 'Sick'}
-                        </strong>
-                        {' · '}{TC.fmtHours(l.hours)} hrs
-                      </div>
-                    ))}
+                    {lv.map(l => {
+                      const meta = l.type === 'pto'
+                        ? { label: 'PTO', color: 'var(--trp-orange-700)' }
+                        : l.type === 'sick'
+                          ? { label: 'Sick', color: 'var(--trp-pacific-700)' }
+                          : { label: 'Holiday', color: 'var(--trp-coral-700)' };
+                      return (
+                        <div key={l.id} className="tiny" style={{margin: '4px 0'}}>
+                          <strong style={{textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-caps)', fontSize: 11, color: meta.color}}>
+                            {meta.label}
+                          </strong>
+                          {' · '}{TC.fmtHours(l.hours)} hrs
+                          {l.name && <span className="muted" style={{marginLeft: 6}}>· {l.name}</span>}
+                        </div>
+                      );
+                    })}
                   </td>
                   <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.work)}</td>
                   <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.pto)}</td>
                   <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.sick)}</td>
+                  <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.holiday)}</td>
                   <td className="hrs total" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.total)}</td>
                   {!locked && (
                     <td style={{textAlign: 'right'}}>
@@ -122,6 +132,7 @@ function Timesheet() {
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.workTotal)}</td>
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.ptoTotal)}</td>
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.sickTotal)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.holidayTotal)}</td>
               <td className="tnum total-val" style={{textAlign: 'right'}}>{TC.fmtHours(totals.total)}</td>
               {!locked && <td></td>}
             </tr>

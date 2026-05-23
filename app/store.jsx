@@ -265,7 +265,7 @@ function payPeriodWeeks(state, periodStartIso, userId) {
 function payPeriodTotals(state, periodStartIso, userId) {
   const TC = window.TC;
   const pp = payPeriodForDate(periodStartIso, state.settings);
-  let total = 0, work = 0, pto = 0, sick = 0;
+  let total = 0, work = 0, pto = 0, sick = 0, holiday = 0;
   const start = TC.parseDate(pp.periodStart);
   const end = TC.parseDate(pp.periodEnd);
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -279,10 +279,13 @@ function payPeriodTotals(state, periodStartIso, userId) {
     const daySick = state.leaveEntries
       .filter(l => l.userId === userId && l.date === iso && l.type === 'sick')
       .reduce((a, l) => a + l.hours, 0);
-    work += dayWork; pto += dayPto; sick += daySick;
-    total += dayWork + dayPto + daySick;
+    const dayHoliday = state.leaveEntries
+      .filter(l => l.userId === userId && l.date === iso && l.type === 'holiday')
+      .reduce((a, l) => a + l.hours, 0);
+    work += dayWork; pto += dayPto; sick += daySick; holiday += dayHoliday;
+    total += dayWork + dayPto + daySick + dayHoliday;
   }
-  return { total, work, pto, sick };
+  return { total, work, pto, sick, holiday };
 }
 
 // A pay period is "ready to send" once every week containing logged data
@@ -310,13 +313,15 @@ function weekTotals(state, weekStartIso, userId, now = Date.now()) {
     const work = ent.filter(e => e.date === d).reduce((a, e) => a + window.TC.entryHours(e, now), 0);
     const pto = lv.filter(l => l.date === d && l.type === 'pto').reduce((a, l) => a + l.hours, 0);
     const sick = lv.filter(l => l.date === d && l.type === 'sick').reduce((a, l) => a + l.hours, 0);
-    return { date: d, work, pto, sick, total: work + pto + sick };
+    const holiday = lv.filter(l => l.date === d && l.type === 'holiday').reduce((a, l) => a + l.hours, 0);
+    return { date: d, work, pto, sick, holiday, total: work + pto + sick + holiday };
   });
   const total = perDay.reduce((a, d) => a + d.total, 0);
   const workTotal = perDay.reduce((a, d) => a + d.work, 0);
   const ptoTotal = perDay.reduce((a, d) => a + d.pto, 0);
   const sickTotal = perDay.reduce((a, d) => a + d.sick, 0);
-  return { perDay, total, workTotal, ptoTotal, sickTotal };
+  const holidayTotal = perDay.reduce((a, d) => a + d.holiday, 0);
+  return { perDay, total, workTotal, ptoTotal, sickTotal, holidayTotal };
 }
 
 // ----- Approval handoff (URL hash payload) --------------------------------
@@ -357,7 +362,7 @@ function buildApprovalRequest(state, periodStartIso) {
           ed: e.manuallyEdited ? 1 : 0,
           est: e.estimated ? 1 : 0,
         })),
-        leaves: lvs.map(l => ({ t: l.type, h: l.hours })),
+        leaves: lvs.map(l => ({ t: l.type, h: l.hours, n: l.name || undefined })),
       };
     });
     return {
@@ -366,6 +371,7 @@ function buildApprovalRequest(state, periodStartIso) {
       work: t.workTotal,
       pto: t.ptoTotal,
       sick: t.sickTotal,
+      holiday: t.holidayTotal,
       total: t.total,
       days,
       submittedAt: sub ? sub.submittedAt : null,
@@ -781,20 +787,25 @@ function makeActions(update) {
       });
     },
 
-    addLeave(userId, { date, type, hours, override = false }) {
+    addLeave(userId, { date, type, hours, name, override = false }) {
       update(s => {
         const u = s.users.find(x => x.id === userId);
         if (!u) return s;
-        const bal = type === 'pto' ? u.ptoBalance : u.sickBalance;
-        if (hours > bal && !override) return s;
-        // Deduct balance on submission (single-user app — no separate
-        // approval step for leave anymore).
-        const users = s.users.map(x => x.id !== userId ? x
-          : type === 'pto' ? { ...x, ptoBalance: Math.max(0, x.ptoBalance - hours) }
-          : { ...x, sickBalance: Math.max(0, x.sickBalance - hours) });
+        // Holidays don't pull from any balance — they're just extra paid
+        // hours on top of whatever was worked / taken as PTO/sick.
+        if (type !== 'holiday') {
+          const bal = type === 'pto' ? u.ptoBalance : u.sickBalance;
+          if (hours > bal && !override) return s;
+        }
+        const users = type === 'holiday'
+          ? s.users
+          : s.users.map(x => x.id !== userId ? x
+              : type === 'pto' ? { ...x, ptoBalance: Math.max(0, x.ptoBalance - hours) }
+              : { ...x, sickBalance: Math.max(0, x.sickBalance - hours) });
         const leave = {
           id: 'l-' + window.TC.uid(),
           userId, date, type, hours,
+          name: name || null,
           status: 'approved',
           directorComment: '',
           requestedAt: new Date().toISOString(),
@@ -807,9 +818,10 @@ function makeActions(update) {
       update(s => {
         const leave = s.leaveEntries.find(l => l.id === id);
         if (!leave) return s;
-        // Refund balance if the leave was approved.
+        // Refund balance if the leave was approved. Holidays don't touch
+        // balances so there's nothing to refund.
         let users = s.users;
-        if (leave.status === 'approved') {
+        if (leave.status === 'approved' && leave.type !== 'holiday') {
           users = users.map(u => u.id !== leave.userId ? u
             : leave.type === 'pto' ? { ...u, ptoBalance: u.ptoBalance + leave.hours }
             : { ...u, sickBalance: u.sickBalance + leave.hours });

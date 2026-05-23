@@ -76,6 +76,7 @@ function History() {
                 <th style={{textAlign: 'right'}}>Worked</th>
                 <th style={{textAlign: 'right'}}>PTO</th>
                 <th style={{textAlign: 'right'}}>Sick</th>
+                <th style={{textAlign: 'right'}}>Holiday</th>
                 <th style={{textAlign: 'right'}}>Total</th>
                 <th>Week Status</th>
                 <th>Pay Period</th>
@@ -92,6 +93,7 @@ function History() {
                   <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.totals.workTotal)}</td>
                   <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.totals.ptoTotal)}</td>
                   <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.totals.sickTotal)}</td>
+                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.totals.holidayTotal || 0)}</td>
                   <td className="tnum total" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(w.totals.total)}</td>
                   <td><Badge status={w.status} /></td>
                   <td>
@@ -209,6 +211,8 @@ function buildCsvRows(state, userId, startIso, endIso) {
     'Worked Hours',
     'PTO Hours',
     'Sick Hours',
+    'Holiday Hours',
+    'Holiday Name',
     'Daily Total',
     'Manually Edited',
     'Week',
@@ -223,7 +227,7 @@ function buildCsvRows(state, userId, startIso, endIso) {
   ];
   rows.push(headerRow);
 
-  let workedTotal = 0, ptoTotal = 0, sickTotal = 0;
+  let workedTotal = 0, ptoTotal = 0, sickTotal = 0, holidayTotal = 0;
 
   const start = TC.parseDate(startIso);
   const end = TC.parseDate(endIso);
@@ -252,15 +256,17 @@ function buildCsvRows(state, userId, startIso, endIso) {
 
     const ptoHrs = leaves.filter(l => l.type === 'pto').reduce((a, l) => a + l.hours, 0);
     const sickHrs = leaves.filter(l => l.type === 'sick').reduce((a, l) => a + l.hours, 0);
+    const holidayHrs = leaves.filter(l => l.type === 'holiday').reduce((a, l) => a + l.hours, 0);
+    const holidayNames = leaves.filter(l => l.type === 'holiday').map(l => l.name).filter(Boolean).join('; ');
 
     if (entries.length === 0 && leaves.length === 0) continue;
 
     if (entries.length === 0) {
-      const total = ptoHrs + sickHrs;
-      ptoTotal += ptoHrs; sickTotal += sickHrs;
+      const total = ptoHrs + sickHrs + holidayHrs;
+      ptoTotal += ptoHrs; sickTotal += sickHrs; holidayTotal += holidayHrs;
       rows.push([
         dateIso, dayLabel, '', '', '',
-        '0.00', ptoHrs.toFixed(2), sickHrs.toFixed(2), total.toFixed(2),
+        '0.00', ptoHrs.toFixed(2), sickHrs.toFixed(2), holidayHrs.toFixed(2), holidayNames, total.toFixed(2),
         '',
         weekLabel, status, wkApprovedBy, wkApprovedAt, wkNote,
         ppLabel, ppSigned, ppSignedBy, ppSignedAt,
@@ -271,8 +277,10 @@ function buildCsvRows(state, userId, startIso, endIso) {
         workedTotal += hrs;
         const dailyPto = idx === 0 ? ptoHrs : 0;
         const dailySick = idx === 0 ? sickHrs : 0;
-        if (idx === 0) { ptoTotal += ptoHrs; sickTotal += sickHrs; }
-        const total = hrs + dailyPto + dailySick;
+        const dailyHoliday = idx === 0 ? holidayHrs : 0;
+        const dailyHolidayNames = idx === 0 ? holidayNames : '';
+        if (idx === 0) { ptoTotal += ptoHrs; sickTotal += sickHrs; holidayTotal += holidayHrs; }
+        const total = hrs + dailyPto + dailySick + dailyHoliday;
         rows.push([
           dateIso, dayLabel,
           e.clockIn ? new Date(e.clockIn).toLocaleTimeString() : '',
@@ -281,6 +289,8 @@ function buildCsvRows(state, userId, startIso, endIso) {
           hrs.toFixed(2),
           dailyPto.toFixed(2),
           dailySick.toFixed(2),
+          dailyHoliday.toFixed(2),
+          dailyHolidayNames,
           total.toFixed(2),
           e.manuallyEdited ? 'Yes' : '',
           weekLabel, status, wkApprovedBy, wkApprovedAt, wkNote,
@@ -291,13 +301,15 @@ function buildCsvRows(state, userId, startIso, endIso) {
   }
 
   // ----- Totals row -----
-  const grandTotal = workedTotal + ptoTotal + sickTotal;
+  const grandTotal = workedTotal + ptoTotal + sickTotal + holidayTotal;
   rows.push([]);
   rows.push([
     'TOTALS', '', '', '', '',
     workedTotal.toFixed(2),
     ptoTotal.toFixed(2),
     sickTotal.toFixed(2),
+    holidayTotal.toFixed(2),
+    '',
     grandTotal.toFixed(2),
   ]);
 

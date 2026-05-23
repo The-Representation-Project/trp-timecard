@@ -1,14 +1,53 @@
-// app/TimeOff.jsx — PTO and Sick time entry, balances, history.
+// app/TimeOff.jsx — PTO, Sick, and Paid Holiday entry, balances, history.
 // Single-user app: leave is logged + deducted from balance immediately
 // (no separate approval — Katrina signs off the whole pay period).
+// Holidays don't pull from any balance — they're just extra paid hours.
 
 const { useState: useStateTO } = React;
+
+// ---------- US Federal holiday helpers --------------------------------------
+function _nthWeekday(year, monthIdx, weekday, n) {
+  const d = new Date(year, monthIdx, 1);
+  const shift = (weekday - d.getDay() + 7) % 7;
+  d.setDate(1 + shift + (n - 1) * 7);
+  return d;
+}
+function _lastWeekday(year, monthIdx, weekday) {
+  const d = new Date(year, monthIdx + 1, 0);
+  const shift = (d.getDay() - weekday + 7) % 7;
+  d.setDate(d.getDate() - shift);
+  return d;
+}
+function _observed(date) {
+  const day = date.getDay();
+  if (day === 6) { const d = new Date(date); d.setDate(d.getDate() - 1); return d; }
+  if (day === 0) { const d = new Date(date); d.setDate(d.getDate() + 1); return d; }
+  return date;
+}
+function _usFederalHolidays(year) {
+  return [
+    { name: "New Year's Day", date: _observed(new Date(year, 0, 1)) },
+    { name: 'Martin Luther King Jr. Day', date: _nthWeekday(year, 0, 1, 3) },
+    { name: "Presidents' Day", date: _nthWeekday(year, 1, 1, 3) },
+    { name: 'Memorial Day', date: _lastWeekday(year, 4, 1) },
+    { name: 'Juneteenth', date: _observed(new Date(year, 5, 19)) },
+    { name: 'Independence Day', date: _observed(new Date(year, 6, 4)) },
+    { name: 'Labor Day', date: _nthWeekday(year, 8, 1, 1) },
+    { name: 'Columbus Day', date: _nthWeekday(year, 9, 1, 2) },
+    { name: 'Veterans Day', date: _observed(new Date(year, 10, 11)) },
+    { name: 'Thanksgiving Day', date: _nthWeekday(year, 10, 4, 4) },
+    { name: 'Day After Thanksgiving', date: (() => { const d = _nthWeekday(year, 10, 4, 4); d.setDate(d.getDate() + 1); return d; })() },
+    { name: 'Christmas Eve', date: new Date(year, 11, 24) },
+    { name: 'Christmas Day', date: _observed(new Date(year, 11, 25)) },
+    { name: "New Year's Eve", date: new Date(year, 11, 31) },
+  ];
+}
 
 function TimeOff() {
   const { state, actions } = useStore();
   const user = currentUser(state);
 
-  const [showRequest, setShowRequest] = useStateTO(false);
+  const [showRequest, setShowRequest] = useStateTO(null); // 'leave' | 'holiday' | null
   const [showBalanceEdit, setShowBalanceEdit] = useStateTO(false);
 
   const leaves = state.leaveEntries
@@ -21,11 +60,12 @@ function TimeOff() {
       <div className="page-header">
         <div>
           <div className="eyebrow">Time Off</div>
-          <h1>PTO & Sick Time</h1>
+          <h1>PTO, Sick & Holidays</h1>
         </div>
         <div className="actions">
           <button className="btn ghost" onClick={() => setShowBalanceEdit(true)}>⚙ Balances & Accrual</button>
-          <button className="btn" onClick={() => setShowRequest(true)}>+ Log Time Off</button>
+          <button className="btn ghost" onClick={() => setShowRequest('holiday')}>+ Log Holiday</button>
+          <button className="btn" onClick={() => setShowRequest('leave')}>+ Log Time Off</button>
         </div>
       </div>
 
@@ -56,9 +96,9 @@ function TimeOff() {
       <div className="comment-block" style={{margin: '0 0 18px', borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
         <span className="from" style={{color: 'var(--trp-pacific-700)'}}>How leave works here</span>
         Logging PTO or sick time deducts from your balance and counts toward
-        the day's hours on your timesheet immediately. Katrina sees the totals
-        when she signs off the pay period — no separate approval step. When a
-        pay period is approved, accrual is added back based on hours worked.
+        the day's hours on your timesheet immediately. Paid holidays don't
+        touch any balance — they're just extra paid hours on top. Katrina
+        sees every category when she signs off the pay period.
       </div>
 
       <div className="card">
@@ -66,7 +106,7 @@ function TimeOff() {
         {leaves.length === 0 ? (
           <div className="empty">
             <h3>No leave logged yet</h3>
-            <div>Log your first PTO or sick day above.</div>
+            <div>Log your first PTO, sick, or holiday day above.</div>
           </div>
         ) : (
           <table className="history-table">
@@ -82,13 +122,23 @@ function TimeOff() {
             <tbody>
               {leaves.map(l => {
                 const dateLocked = isWeekLocked(state, TC.weekRange(TC.parseDate(l.date), 0).startIso, l.userId);
+                const typeMeta = l.type === 'pto'
+                  ? { label: 'PTO', color: 'var(--trp-orange-700)' }
+                  : l.type === 'sick'
+                    ? { label: 'Sick', color: 'var(--trp-pacific-700)' }
+                    : { label: 'Holiday', color: 'var(--trp-coral-700)' };
                 return (
                   <tr key={l.id}>
                     <td><strong style={{color: 'var(--trp-navy)'}}>{TC.fmtDayShort(l.date)}</strong></td>
                     <td>
-                      <span style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 11, color: l.type === 'pto' ? 'var(--trp-orange-700)' : 'var(--trp-pacific-700)'}}>
-                        {l.type === 'pto' ? 'PTO' : 'Sick'}
+                      <span style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 11, color: typeMeta.color}}>
+                        {typeMeta.label}
                       </span>
+                      {l.name && (
+                        <div className="tiny muted" style={{marginTop: 2, textTransform: 'none', letterSpacing: 0, fontWeight: 400}}>
+                          {l.name}
+                        </div>
+                      )}
                     </td>
                     <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(l.hours)}</td>
                     <td className="tiny muted">{l.requestedAt ? new Date(l.requestedAt).toLocaleDateString() : '—'}</td>
@@ -97,7 +147,10 @@ function TimeOff() {
                         <button
                           className="btn ghost small"
                           onClick={() => {
-                            if (confirm(`Remove ${l.type === 'pto' ? 'PTO' : 'sick'} on ${TC.fmtDayShort(l.date)}? Hours will refund to your balance.`)) {
+                            const refundLabel = l.type === 'holiday'
+                              ? 'Holiday hours don\'t come from a balance — nothing to refund.'
+                              : 'Hours will refund to your balance.';
+                            if (confirm(`Remove ${typeMeta.label.toLowerCase()} on ${TC.fmtDayShort(l.date)}? ${refundLabel}`)) {
                               actions.deleteLeave(l.id);
                             }
                           }}
@@ -116,7 +169,8 @@ function TimeOff() {
         )}
       </div>
 
-      {showRequest && <LeaveRequestModal user={user} onClose={() => setShowRequest(false)} />}
+      {showRequest === 'leave' && <LeaveRequestModal user={user} onClose={() => setShowRequest(null)} />}
+      {showRequest === 'holiday' && <HolidayRequestModal user={user} onClose={() => setShowRequest(null)} />}
       {showBalanceEdit && <BalanceEditModal user={user} onClose={() => setShowBalanceEdit(false)} />}
     </div>
   );
@@ -224,6 +278,7 @@ function TypeButton({ active, onClick, color, children }) {
   const colorMap = {
     orange: { bg: 'var(--trp-orange-100)', border: 'var(--trp-orange)', text: 'var(--trp-orange-700)' },
     pacific: { bg: 'var(--trp-pacific-100)', border: 'var(--trp-pacific-blue)', text: 'var(--trp-pacific-900)' },
+    coral: { bg: 'var(--trp-coral-100)', border: 'var(--trp-coral)', text: 'var(--trp-coral-700)' },
   };
   const c = colorMap[color] || colorMap.pacific;
   return (
@@ -240,6 +295,120 @@ function TypeButton({ active, onClick, color, children }) {
       }}>
       {children}
     </button>
+  );
+}
+
+function HolidayRequestModal({ user, onClose }) {
+  const { actions } = useStore();
+  const today = TC.isoDate(new Date());
+  const [date, setDate] = useStateTO(today);
+  const [hours, setHours] = useStateTO(8);
+  const [holidayKey, setHolidayKey] = useStateTO(''); // index into list, or 'other'
+  const [customName, setCustomName] = useStateTO('');
+
+  // Build the holiday list for the YEAR of the selected date, so picking a
+  // date in 2027 shows 2027's holidays.
+  const year = (date && TC.parseDate(date)) ? TC.parseDate(date).getFullYear() : new Date().getFullYear();
+  const holidays = React.useMemo(() => _usFederalHolidays(year), [year]);
+
+  function pickHoliday(value) {
+    setHolidayKey(value);
+    if (value === '' || value === 'other') return;
+    const h = holidays[Number(value)];
+    if (h) setDate(TC.isoDate(h.date));
+  }
+
+  const chosenName = (() => {
+    if (holidayKey === 'other') return customName.trim();
+    if (holidayKey === '' || holidayKey == null) return '';
+    const h = holidays[Number(holidayKey)];
+    return h ? h.name : '';
+  })();
+
+  const canSubmit = !!date && Number(hours) > 0 && !!chosenName;
+
+  function submit() {
+    if (!canSubmit) return;
+    actions.addLeave(user.id, {
+      date,
+      type: 'holiday',
+      hours: Number(hours) || 0,
+      name: chosenName,
+    });
+    onClose();
+  }
+
+  return (
+    <Modal
+      title="Log Paid Holiday"
+      subtitle="Paid holidays don't pull from your PTO or sick balance — they count as extra paid hours on top."
+      onClose={onClose}
+    >
+      <label className="field">
+        <span className="lbl">Holiday</span>
+        <select
+          value={holidayKey}
+          onChange={e => pickHoliday(e.target.value)}
+        >
+          <option value="">Choose a holiday…</option>
+          {holidays.map((h, i) => (
+            <option key={i} value={i}>
+              {h.name} · {h.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </option>
+          ))}
+          <option value="other">Other (type your own)…</option>
+        </select>
+      </label>
+
+      {holidayKey === 'other' && (
+        <label className="field">
+          <span className="lbl">Holiday name</span>
+          <input
+            type="text"
+            placeholder='e.g. "Day after Christmas" or "Company holiday"'
+            value={customName}
+            onChange={e => setCustomName(e.target.value)}
+            autoFocus
+          />
+        </label>
+      )}
+
+      <div className="field-row">
+        <label className="field">
+          <span className="lbl">Date</span>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="lbl">Hours</span>
+          <input type="number" min="0" max="24" step="0.5" value={hours} onChange={e => setHours(e.target.value)} />
+        </label>
+      </div>
+
+      <div style={{
+        background: 'var(--trp-coral-100)', padding: '12px 14px',
+        borderRadius: 'var(--radius-sm)', marginTop: 4,
+        border: '1px solid var(--trp-coral-200, var(--border-soft))',
+      }}>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+          <span style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700, color: 'var(--trp-coral-700)'}}>
+            Paid hours to add
+          </span>
+          <span className="tnum" style={{fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--trp-navy)'}}>
+            {TC.fmtHours(Number(hours) || 0)} hrs
+          </span>
+        </div>
+        <div className="tiny muted" style={{marginTop: 4}}>
+          No balance deducted. Counts toward the day's total on your timesheet.
+        </div>
+      </div>
+
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn" onClick={submit} disabled={!canSubmit}>
+          Log Holiday
+        </button>
+      </div>
+    </Modal>
   );
 }
 

@@ -52,6 +52,7 @@
         <td class="num">${w.tot.workTotal.toFixed(2)}</td>
         <td class="num">${w.tot.ptoTotal.toFixed(2)}</td>
         <td class="num">${w.tot.sickTotal.toFixed(2)}</td>
+        <td class="num">${(w.tot.holidayTotal || 0).toFixed(2)}</td>
         <td class="num total">${w.tot.total.toFixed(2)}</td>
       </tr>
     `).join('');
@@ -379,6 +380,10 @@
       <div class="lbl">${escapeHtml(caps('Sick'))}</div>
       <div class="val">${totals.sick.toFixed(2)}<span class="unit">hrs</span></div>
     </div>
+    <div>
+      <div class="lbl">${escapeHtml(caps('Holiday'))}</div>
+      <div class="val">${(totals.holiday || 0).toFixed(2)}<span class="unit">hrs</span></div>
+    </div>
   </div>
 
   <table class="weeks">
@@ -388,6 +393,7 @@
         <th class="num">${escapeHtml(caps('Worked'))}</th>
         <th class="num">${escapeHtml(caps('PTO'))}</th>
         <th class="num">${escapeHtml(caps('Sick'))}</th>
+        <th class="num">${escapeHtml(caps('Holiday'))}</th>
         <th class="num">${escapeHtml(caps('Total'))}</th>
       </tr>
     </thead>
@@ -499,6 +505,7 @@
         <td class="num">${(w.work || 0).toFixed(2)}</td>
         <td class="num">${(w.pto || 0).toFixed(2)}</td>
         <td class="num">${(w.sick || 0).toFixed(2)}</td>
+        <td class="num">${(w.holiday || 0).toFixed(2)}</td>
         <td class="num total">${(w.total || 0).toFixed(2)}</td>
       </tr>
     `).join('');
@@ -610,6 +617,10 @@
       <div class="lbl">${escapeHtml(caps('Sick'))}</div>
       <div class="val">${(totals.sick || 0).toFixed(2)}<span class="unit">hrs</span></div>
     </div>
+    <div>
+      <div class="lbl">${escapeHtml(caps('Holiday'))}</div>
+      <div class="val">${(totals.holiday || 0).toFixed(2)}<span class="unit">hrs</span></div>
+    </div>
   </div>
 
   <table class="weeks">
@@ -619,6 +630,7 @@
         <th class="num">${escapeHtml(caps('Worked'))}</th>
         <th class="num">${escapeHtml(caps('PTO'))}</th>
         <th class="num">${escapeHtml(caps('Sick'))}</th>
+        <th class="num">${escapeHtml(caps('Holiday'))}</th>
         <th class="num">${escapeHtml(caps('Total'))}</th>
       </tr>
     </thead>
