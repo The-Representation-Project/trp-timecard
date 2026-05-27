@@ -205,7 +205,6 @@ function DailyDetail({ weeks }) {
           const dayHrs = (r.sessions || []).reduce((a, s) => a + sessionHours(s), 0)
             + (r.leaves || []).reduce((a, l) => a + l.h, 0);
           const anyEdited = (r.sessions || []).some(s => s.ed);
-          const anyEst = (r.sessions || []).some(s => s.est);
           return (
             <tr key={r.d}>
               <td className="day">{TC.fmtDayShort(r.d)}</td>
@@ -214,8 +213,7 @@ function DailyDetail({ weeks }) {
                   <div key={i} className="tiny" style={{margin: '3px 0'}}>
                     <span className="tnum">{TC.fmtTime(s.in)} → {s.out ? TC.fmtTime(s.out) : '—'}</span>
                     {s.br > 0 && <span className="muted"> · break {s.br}m</span>}
-                    {s.est ? <span className="manual-flag" style={{background: 'var(--trp-orange-100)', color: 'var(--trp-orange-700)'}}>Estimate</span>
-                      : s.ed ? <span className="manual-flag">Edited</span> : null}
+                    {s.ed ? <span className="manual-flag">Edited</span> : null}
                   </div>
                 ))}
                 {(r.leaves || []).map((l, i) => {
@@ -239,9 +237,7 @@ function DailyDetail({ weeks }) {
               </td>
               <td className="tnum total" style={{textAlign: 'right'}}>{TC.fmtHours(dayHrs)}</td>
               <td className="tiny muted">
-                {anyEst && <span>Includes estimated time for upcoming day(s).</span>}
-                {!anyEst && anyEdited && <span>Manually edited sessions.</span>}
-                {!anyEst && !anyEdited && <span>—</span>}
+                {anyEdited ? <span>Manually edited sessions.</span> : <span>—</span>}
               </td>
             </tr>
           );
