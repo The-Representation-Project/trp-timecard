@@ -333,6 +333,7 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
                 <th style={{textAlign: 'right'}}>PTO</th>
                 <th style={{textAlign: 'right'}}>Sick</th>
                 <th style={{textAlign: 'right'}}>Holiday</th>
+                <th style={{textAlign: 'right'}}>LWOP</th>
                 <th style={{textAlign: 'right'}}>Total</th>
               </tr>
             </thead>
@@ -359,6 +360,7 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
                   <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.ptoTotal)}</td>
                   <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.sickTotal)}</td>
                   <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.holidayTotal || 0)}</td>
+                  <td className="tnum" style={{textAlign: 'right', color: (tot.lwopTotal || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(tot.lwopTotal || 0)}</td>
                   <td className="tnum" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>
                     {TC.fmtHours(tot.total)}
                   </td>

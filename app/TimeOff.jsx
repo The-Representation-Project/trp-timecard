@@ -97,8 +97,10 @@ function TimeOff() {
         <span className="from" style={{color: 'var(--trp-pacific-700)'}}>How leave works here</span>
         Logging PTO or sick time deducts from your balance and counts toward
         the day's hours on your timesheet immediately. Paid holidays don't
-        touch any balance — they're just extra paid hours on top. Katrina
-        sees every category when she signs off the pay period.
+        touch any balance — they're just extra paid hours on top. LWOP
+        (Leave Without Pay) is logged for the record but isn't paid and
+        doesn't deduct from any balance. Katrina sees every category when
+        she signs off the pay period.
       </div>
 
       <div className="card">
@@ -126,7 +128,9 @@ function TimeOff() {
                   ? { label: 'PTO', color: 'var(--trp-orange-700)' }
                   : l.type === 'sick'
                     ? { label: 'Sick', color: 'var(--trp-pacific-700)' }
-                    : { label: 'Holiday', color: 'var(--trp-coral-700)' };
+                    : l.type === 'lwop'
+                      ? { label: 'LWOP', color: 'var(--trp-stone-700)' }
+                      : { label: 'Holiday', color: 'var(--trp-coral-700)' };
                 return (
                   <tr key={l.id}>
                     <td><strong style={{color: 'var(--trp-navy)'}}>{TC.fmtDayShort(l.date)}</strong></td>
@@ -149,7 +153,9 @@ function TimeOff() {
                           onClick={() => {
                             const refundLabel = l.type === 'holiday'
                               ? 'Holiday hours don\'t come from a balance — nothing to refund.'
-                              : 'Hours will refund to your balance.';
+                              : l.type === 'lwop'
+                                ? 'LWOP is unpaid — no balance to refund.'
+                                : 'Hours will refund to your balance.';
                             if (confirm(`Remove ${typeMeta.label.toLowerCase()} on ${TC.fmtDayShort(l.date)}? ${refundLabel}`)) {
                               actions.deleteLeave(l.id);
                             }
@@ -200,8 +206,9 @@ function LeaveRequestModal({ user, onClose }) {
   }, [startDate, endDate]);
 
   const totalHours = days.length * Number(hoursPerDay || 0);
-  const balance = type === 'pto' ? user.ptoBalance : user.sickBalance;
-  const exceedsBalance = totalHours > balance;
+  const tracksBalance = type === 'pto' || type === 'sick';
+  const balance = type === 'pto' ? user.ptoBalance : type === 'sick' ? user.sickBalance : 0;
+  const exceedsBalance = tracksBalance && totalHours > balance;
 
   function submit() {
     days.forEach(d => {
@@ -211,10 +218,10 @@ function LeaveRequestModal({ user, onClose }) {
   }
 
   return (
-    <Modal title="Log Time Off" subtitle="PTO and Sick hours count toward your weekly total alongside clocked time." onClose={onClose}>
+    <Modal title="Log Time Off" subtitle="PTO and Sick count toward your weekly paid total. LWOP is logged for the record but not paid." onClose={onClose}>
       <label className="field">
         <span className="lbl">Type</span>
-        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8}}>
+        <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8}}>
           <TypeButton active={type === 'pto'} onClick={() => setType('pto')} color="orange">
             PTO
             <div className="tiny" style={{fontWeight: 400, marginTop: 2, opacity: 0.8}}>Vacation / personal</div>
@@ -222,6 +229,10 @@ function LeaveRequestModal({ user, onClose }) {
           <TypeButton active={type === 'sick'} onClick={() => setType('sick')} color="pacific">
             Sick
             <div className="tiny" style={{fontWeight: 400, marginTop: 2, opacity: 0.8}}>Illness / care</div>
+          </TypeButton>
+          <TypeButton active={type === 'lwop'} onClick={() => setType('lwop')} color="stone">
+            LWOP
+            <div className="tiny" style={{fontWeight: 400, marginTop: 2, opacity: 0.8}}>Unpaid time off</div>
           </TypeButton>
         </div>
       </label>
@@ -241,15 +252,21 @@ function LeaveRequestModal({ user, onClose }) {
       </label>
 
       <div style={{
-        background: 'var(--trp-cream-100)', padding: '14px 16px',
+        background: tracksBalance ? 'var(--trp-cream-100)' : 'var(--trp-stone-100, var(--trp-cream-100))',
+        padding: '14px 16px',
         borderRadius: 'var(--radius-sm)', marginTop: 4
       }}>
         <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: 4}}>
-          <span style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700, color: 'var(--trp-navy)'}}>Total to deduct</span>
+          <span style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700, color: 'var(--trp-navy)'}}>
+            {tracksBalance ? 'Total to deduct' : 'Total unpaid hours'}
+          </span>
           <span className="tnum" style={{fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(totalHours)} hrs</span>
         </div>
         <div className="tiny muted">
-          {days.length} weekday{days.length === 1 ? '' : 's'} · weekends excluded automatically · current {type === 'pto' ? 'PTO' : 'Sick'} balance: {TC.fmtHours(balance)} hrs
+          {days.length} weekday{days.length === 1 ? '' : 's'} · weekends excluded automatically
+          {tracksBalance
+            ? ` · current ${type === 'pto' ? 'PTO' : 'Sick'} balance: ${TC.fmtHours(balance)} hrs`
+            : ' · LWOP doesn\'t deduct from any balance and isn\'t paid'}
         </div>
       </div>
 
@@ -279,6 +296,7 @@ function TypeButton({ active, onClick, color, children }) {
     orange: { bg: 'var(--trp-orange-100)', border: 'var(--trp-orange)', text: 'var(--trp-orange-700)' },
     pacific: { bg: 'var(--trp-pacific-100)', border: 'var(--trp-pacific-blue)', text: 'var(--trp-pacific-900)' },
     coral: { bg: 'var(--trp-coral-100)', border: 'var(--trp-coral)', text: 'var(--trp-coral-700)' },
+    stone: { bg: 'var(--trp-stone-100, var(--trp-cream-100))', border: 'var(--trp-stone-700, #777)', text: 'var(--trp-stone-700, #555)' },
   };
   const c = colorMap[color] || colorMap.pacific;
   return (

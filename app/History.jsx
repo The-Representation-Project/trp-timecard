@@ -213,6 +213,7 @@ function buildCsvRows(state, userId, startIso, endIso) {
     'Sick Hours',
     'Holiday Hours',
     'Holiday Name',
+    'LWOP Hours',
     'Daily Total',
     'Manually Edited',
     'Week',
@@ -227,7 +228,7 @@ function buildCsvRows(state, userId, startIso, endIso) {
   ];
   rows.push(headerRow);
 
-  let workedTotal = 0, ptoTotal = 0, sickTotal = 0, holidayTotal = 0;
+  let workedTotal = 0, ptoTotal = 0, sickTotal = 0, holidayTotal = 0, lwopTotal = 0;
 
   const start = TC.parseDate(startIso);
   const end = TC.parseDate(endIso);
@@ -258,15 +259,16 @@ function buildCsvRows(state, userId, startIso, endIso) {
     const sickHrs = leaves.filter(l => l.type === 'sick').reduce((a, l) => a + l.hours, 0);
     const holidayHrs = leaves.filter(l => l.type === 'holiday').reduce((a, l) => a + l.hours, 0);
     const holidayNames = leaves.filter(l => l.type === 'holiday').map(l => l.name).filter(Boolean).join('; ');
+    const lwopHrs = leaves.filter(l => l.type === 'lwop').reduce((a, l) => a + l.hours, 0);
 
     if (entries.length === 0 && leaves.length === 0) continue;
 
     if (entries.length === 0) {
-      const total = ptoHrs + sickHrs + holidayHrs;
-      ptoTotal += ptoHrs; sickTotal += sickHrs; holidayTotal += holidayHrs;
+      const total = ptoHrs + sickHrs + holidayHrs; // LWOP is unpaid, excluded
+      ptoTotal += ptoHrs; sickTotal += sickHrs; holidayTotal += holidayHrs; lwopTotal += lwopHrs;
       rows.push([
         dateIso, dayLabel, '', '', '',
-        '0.00', ptoHrs.toFixed(2), sickHrs.toFixed(2), holidayHrs.toFixed(2), holidayNames, total.toFixed(2),
+        '0.00', ptoHrs.toFixed(2), sickHrs.toFixed(2), holidayHrs.toFixed(2), holidayNames, lwopHrs.toFixed(2), total.toFixed(2),
         '',
         weekLabel, status, wkApprovedBy, wkApprovedAt, wkNote,
         ppLabel, ppSigned, ppSignedBy, ppSignedAt,
@@ -279,8 +281,9 @@ function buildCsvRows(state, userId, startIso, endIso) {
         const dailySick = idx === 0 ? sickHrs : 0;
         const dailyHoliday = idx === 0 ? holidayHrs : 0;
         const dailyHolidayNames = idx === 0 ? holidayNames : '';
-        if (idx === 0) { ptoTotal += ptoHrs; sickTotal += sickHrs; holidayTotal += holidayHrs; }
-        const total = hrs + dailyPto + dailySick + dailyHoliday;
+        const dailyLwop = idx === 0 ? lwopHrs : 0;
+        if (idx === 0) { ptoTotal += ptoHrs; sickTotal += sickHrs; holidayTotal += holidayHrs; lwopTotal += lwopHrs; }
+        const total = hrs + dailyPto + dailySick + dailyHoliday; // LWOP unpaid
         rows.push([
           dateIso, dayLabel,
           e.clockIn ? new Date(e.clockIn).toLocaleTimeString() : '',
@@ -291,6 +294,7 @@ function buildCsvRows(state, userId, startIso, endIso) {
           dailySick.toFixed(2),
           dailyHoliday.toFixed(2),
           dailyHolidayNames,
+          dailyLwop.toFixed(2),
           total.toFixed(2),
           e.manuallyEdited ? 'Yes' : '',
           weekLabel, status, wkApprovedBy, wkApprovedAt, wkNote,
@@ -301,7 +305,7 @@ function buildCsvRows(state, userId, startIso, endIso) {
   }
 
   // ----- Totals row -----
-  const grandTotal = workedTotal + ptoTotal + sickTotal + holidayTotal;
+  const grandTotal = workedTotal + ptoTotal + sickTotal + holidayTotal; // LWOP unpaid
   rows.push([]);
   rows.push([
     'TOTALS', '', '', '', '',
@@ -310,6 +314,7 @@ function buildCsvRows(state, userId, startIso, endIso) {
     sickTotal.toFixed(2),
     holidayTotal.toFixed(2),
     '',
+    lwopTotal.toFixed(2),
     grandTotal.toFixed(2),
   ]);
 

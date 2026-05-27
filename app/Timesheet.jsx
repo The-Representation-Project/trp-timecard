@@ -69,6 +69,7 @@ function Timesheet() {
               <th style={{textAlign: 'right'}}>PTO</th>
               <th style={{textAlign: 'right'}}>Sick</th>
               <th style={{textAlign: 'right'}}>Holiday</th>
+              <th style={{textAlign: 'right'}}>LWOP</th>
               <th style={{textAlign: 'right'}}>Total</th>
               {!locked && <th></th>}
             </tr>
@@ -99,7 +100,9 @@ function Timesheet() {
                         ? { label: 'PTO', color: 'var(--trp-orange-700)' }
                         : l.type === 'sick'
                           ? { label: 'Sick', color: 'var(--trp-pacific-700)' }
-                          : { label: 'Holiday', color: 'var(--trp-coral-700)' };
+                          : l.type === 'lwop'
+                            ? { label: 'LWOP', color: 'var(--trp-stone-700)' }
+                            : { label: 'Holiday', color: 'var(--trp-coral-700)' };
                       return (
                         <div key={l.id} className="tiny" style={{margin: '4px 0'}}>
                           <strong style={{textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-caps)', fontSize: 11, color: meta.color}}>
@@ -115,6 +118,7 @@ function Timesheet() {
                   <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.pto)}</td>
                   <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.sick)}</td>
                   <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.holiday)}</td>
+                  <td className="hrs" style={{textAlign: 'right', color: dayTotal.lwop ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(dayTotal.lwop || 0)}</td>
                   <td className="hrs total" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.total)}</td>
                   {!locked && (
                     <td style={{textAlign: 'right'}}>
@@ -133,6 +137,7 @@ function Timesheet() {
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.ptoTotal)}</td>
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.sickTotal)}</td>
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.holidayTotal)}</td>
+              <td className="tnum" style={{textAlign: 'right', color: totals.lwopTotal ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(totals.lwopTotal || 0)}</td>
               <td className="tnum total-val" style={{textAlign: 'right'}}>{TC.fmtHours(totals.total)}</td>
               {!locked && <td></td>}
             </tr>

@@ -358,7 +358,7 @@ function Home() {
                 </tr>
               ))}
               {todayLeave.map(l => {
-                const label = l.type === 'pto' ? 'PTO' : l.type === 'sick' ? 'Sick' : 'Holiday';
+                const label = l.type === 'pto' ? 'PTO' : l.type === 'sick' ? 'Sick' : l.type === 'lwop' ? 'LWOP' : 'Holiday';
                 return (
                   <tr key={l.id}>
                     <td>{label}{l.name && <span className="tiny muted" style={{marginLeft: 8}}>{l.name}</span>} <Badge status={l.status} /></td>

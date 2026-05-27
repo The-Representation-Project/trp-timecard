@@ -380,11 +380,12 @@ function buildApprovalRequest(state, periodStartIso) {
       pto: t.ptoTotal,
       sick: t.sickTotal,
       holiday: t.holidayTotal,
+      lwop: t.lwopTotal,
       total: t.total,
       days,
       submittedAt: sub ? sub.submittedAt : null,
     };
-  }).filter(w => w.total > 0);
+  }).filter(w => w.total > 0 || w.lwop > 0);
 
   return {
     v: 1,
@@ -801,11 +802,14 @@ function makeActions(update) {
         if (!u) return s;
         // Holidays don't pull from any balance — they're just extra paid
         // hours on top of whatever was worked / taken as PTO/sick.
-        if (type !== 'holiday') {
+        // LWOP (Leave Without Pay) also doesn't touch any balance — it's
+        // unpaid absence, logged for the record only.
+        const noBalance = type === 'holiday' || type === 'lwop';
+        if (!noBalance) {
           const bal = type === 'pto' ? u.ptoBalance : u.sickBalance;
           if (hours > bal && !override) return s;
         }
-        const users = type === 'holiday'
+        const users = noBalance
           ? s.users
           : s.users.map(x => x.id !== userId ? x
               : type === 'pto' ? { ...x, ptoBalance: Math.max(0, x.ptoBalance - hours) }
@@ -826,10 +830,11 @@ function makeActions(update) {
       update(s => {
         const leave = s.leaveEntries.find(l => l.id === id);
         if (!leave) return s;
-        // Refund balance if the leave was approved. Holidays don't touch
-        // balances so there's nothing to refund.
+        // Refund balance if the leave was approved. Holidays and LWOP
+        // don't touch balances so there's nothing to refund.
         let users = s.users;
-        if (leave.status === 'approved' && leave.type !== 'holiday') {
+        const touchesBalance = leave.type === 'pto' || leave.type === 'sick';
+        if (leave.status === 'approved' && touchesBalance) {
           users = users.map(u => u.id !== leave.userId ? u
             : leave.type === 'pto' ? { ...u, ptoBalance: u.ptoBalance + leave.hours }
             : { ...u, sickBalance: u.sickBalance + leave.hours });
