@@ -65,7 +65,7 @@ function Timesheet() {
             <tr>
               <th>Day</th>
               <th>Sessions</th>
-              <th style={{textAlign: 'right'}}>Worked</th>
+              <th style={{textAlign: 'right'}}>Clocked</th>
               <th style={{textAlign: 'right'}}>PTO</th>
               <th style={{textAlign: 'right'}}>Sick</th>
               <th style={{textAlign: 'right'}}>Holiday</th>

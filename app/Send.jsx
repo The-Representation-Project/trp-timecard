@@ -61,7 +61,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
             {TC.fmtHours(totals.total)}
           </div>
           <div className="tiny muted" style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 10, marginTop: 2}}>
-            total hours
+            Hours Worked
           </div>
         </div>
       </div>
@@ -93,7 +93,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
         <thead>
           <tr>
             <th>Week</th>
-            <th style={{textAlign: 'right'}}>Worked</th>
+            <th style={{textAlign: 'right'}}>Clocked</th>
             <th style={{textAlign: 'right'}}>PTO</th>
             <th style={{textAlign: 'right'}}>Sick</th>
             <th style={{textAlign: 'right'}}>Holiday</th>
@@ -352,10 +352,32 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
   });
 
   const subject = `Timecard approval needed · ${emp.name} · ${pp.label}`;
+
+  // Count anything dated AFTER today in this period — those hours are
+  // "assumptions" Erika is attesting to so she can submit before payroll
+  // runs on the 27th. Surface them explicitly so Katrina knows.
+  const todayIso = TC.isoDate(new Date());
+  let assumedHrs = 0;
+  state.timeEntries.forEach(e => {
+    if (e.userId === emp.id && e.date > todayIso && e.date >= pp.periodStart && e.date <= pp.periodEnd) {
+      assumedHrs += TC.entryHours(e);
+    }
+  });
+  state.leaveEntries.forEach(l => {
+    if (l.userId === emp.id && l.date > todayIso && l.date >= pp.periodStart && l.date <= pp.periodEnd) {
+      assumedHrs += l.hours;
+    }
+  });
+  const hasAssumptions = assumedHrs > 0;
+  const assumptionLine = hasAssumptions
+    ? `\nThis includes ${TC.fmtHours(assumedHrs)} hrs of assumed time for upcoming days (${TC.fmtDayShort(todayIso)} → ${TC.fmtDayShort(pp.periodEnd)}) — payroll runs before the period closes, so I'm attesting to those hours now and will adjust if anything changes.\n`
+    : '';
+
   const body =
     `Hi ${appr.name.split(/\s+|-/)[0]},\n\n` +
     `My timecard for ${pp.label} (${TC.fmtRange(pp.periodStart, pp.periodEnd)}) is ready for your approval.\n\n` +
-    `Total: ${TC.fmtHours(totals.total)} hrs (${TC.fmtHours(totals.work)} worked, ${TC.fmtHours(totals.pto)} PTO, ${TC.fmtHours(totals.sick)} sick)\n` +
+    `Hours Worked: ${TC.fmtHours(totals.total)} hrs (${TC.fmtHours(totals.work)} clocked, ${TC.fmtHours(totals.pto)} PTO, ${TC.fmtHours(totals.sick)} sick${(totals.holiday || 0) > 0 ? `, ${TC.fmtHours(totals.holiday)} holiday` : ''}${(totals.lwop || 0) > 0 ? `, ${TC.fmtHours(totals.lwop)} LWOP` : ''})\n` +
+    assumptionLine +
     `Pay date: ${payDateLabel}\n` +
     `Approval needed by: ${deadlineLabel}\n\n` +
     `Click below to review and sign. The page will generate a signed PDF for payroll and a one-click link to send back to me so my records update.\n\n` +

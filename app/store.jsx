@@ -286,8 +286,7 @@ function payPeriodTotals(state, periodStartIso, userId) {
       .filter(l => l.userId === userId && l.date === iso && l.type === 'lwop')
       .reduce((a, l) => a + l.hours, 0);
     work += dayWork; pto += dayPto; sick += daySick; holiday += dayHoliday; lwop += dayLwop;
-    // LWOP is unpaid — explicitly NOT added to `total`.
-    total += dayWork + dayPto + daySick + dayHoliday;
+    total += dayWork + dayPto + daySick + dayHoliday + dayLwop;
   }
   return { total, work, pto, sick, holiday, lwop };
 }
@@ -319,9 +318,7 @@ function weekTotals(state, weekStartIso, userId, now = Date.now()) {
     const sick = lv.filter(l => l.date === d && l.type === 'sick').reduce((a, l) => a + l.hours, 0);
     const holiday = lv.filter(l => l.date === d && l.type === 'holiday').reduce((a, l) => a + l.hours, 0);
     const lwop = lv.filter(l => l.date === d && l.type === 'lwop').reduce((a, l) => a + l.hours, 0);
-    // LWOP is UNPAID — explicitly excluded from "total" so payroll math
-    // never accidentally pays for it.
-    return { date: d, work, pto, sick, holiday, lwop, total: work + pto + sick + holiday };
+    return { date: d, work, pto, sick, holiday, lwop, total: work + pto + sick + holiday + lwop };
   });
   const total = perDay.reduce((a, d) => a + d.total, 0);
   const workTotal = perDay.reduce((a, d) => a + d.work, 0);

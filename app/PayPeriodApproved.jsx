@@ -329,7 +329,7 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
               <tr>
                 <th></th>
                 <th>Week</th>
-                <th style={{textAlign: 'right'}}>Worked</th>
+                <th style={{textAlign: 'right'}}>Clocked</th>
                 <th style={{textAlign: 'right'}}>PTO</th>
                 <th style={{textAlign: 'right'}}>Sick</th>
                 <th style={{textAlign: 'right'}}>Holiday</th>
