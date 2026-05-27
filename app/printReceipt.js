@@ -366,11 +366,11 @@
 
   <div class="totals">
     <div class="grand">
-      <div class="lbl">${escapeHtml(caps('Total Paid Hours'))}</div>
+      <div class="lbl">${escapeHtml(caps('Hours Worked'))}</div>
       <div class="val">${totals.total.toFixed(2)}<span class="unit">hrs</span></div>
     </div>
     <div>
-      <div class="lbl">${escapeHtml(caps('Worked'))}</div>
+      <div class="lbl">${escapeHtml(caps('Clocked in'))}</div>
       <div class="val">${totals.work.toFixed(2)}<span class="unit">hrs</span></div>
     </div>
     <div>
@@ -395,7 +395,7 @@
     <thead>
       <tr>
         <th>${escapeHtml(caps('Week'))}</th>
-        <th class="num">${escapeHtml(caps('Worked'))}</th>
+        <th class="num">${escapeHtml(caps('Clocked'))}</th>
         <th class="num">${escapeHtml(caps('PTO'))}</th>
         <th class="num">${escapeHtml(caps('Sick'))}</th>
         <th class="num">${escapeHtml(caps('Holiday'))}</th>
@@ -609,11 +609,11 @@
 
   <div class="totals">
     <div class="grand">
-      <div class="lbl">${escapeHtml(caps('Total Paid Hours'))}</div>
+      <div class="lbl">${escapeHtml(caps('Hours Worked'))}</div>
       <div class="val">${(totals.total || 0).toFixed(2)}<span class="unit">hrs</span></div>
     </div>
     <div>
-      <div class="lbl">${escapeHtml(caps('Worked'))}</div>
+      <div class="lbl">${escapeHtml(caps('Clocked in'))}</div>
       <div class="val">${(totals.work || 0).toFixed(2)}<span class="unit">hrs</span></div>
     </div>
     <div>
@@ -638,7 +638,7 @@
     <thead>
       <tr>
         <th>${escapeHtml(caps('Week'))}</th>
-        <th class="num">${escapeHtml(caps('Worked'))}</th>
+        <th class="num">${escapeHtml(caps('Clocked'))}</th>
         <th class="num">${escapeHtml(caps('PTO'))}</th>
         <th class="num">${escapeHtml(caps('Sick'))}</th>
         <th class="num">${escapeHtml(caps('Holiday'))}</th>
