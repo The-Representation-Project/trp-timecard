@@ -265,7 +265,7 @@ function payPeriodWeeks(state, periodStartIso, userId) {
 function payPeriodTotals(state, periodStartIso, userId) {
   const TC = window.TC;
   const pp = payPeriodForDate(periodStartIso, state.settings);
-  let total = 0, work = 0, pto = 0, sick = 0, holiday = 0;
+  let total = 0, work = 0, pto = 0, sick = 0, holiday = 0, lwop = 0;
   const start = TC.parseDate(pp.periodStart);
   const end = TC.parseDate(pp.periodEnd);
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -282,10 +282,14 @@ function payPeriodTotals(state, periodStartIso, userId) {
     const dayHoliday = state.leaveEntries
       .filter(l => l.userId === userId && l.date === iso && l.type === 'holiday')
       .reduce((a, l) => a + l.hours, 0);
-    work += dayWork; pto += dayPto; sick += daySick; holiday += dayHoliday;
+    const dayLwop = state.leaveEntries
+      .filter(l => l.userId === userId && l.date === iso && l.type === 'lwop')
+      .reduce((a, l) => a + l.hours, 0);
+    work += dayWork; pto += dayPto; sick += daySick; holiday += dayHoliday; lwop += dayLwop;
+    // LWOP is unpaid — explicitly NOT added to `total`.
     total += dayWork + dayPto + daySick + dayHoliday;
   }
-  return { total, work, pto, sick, holiday };
+  return { total, work, pto, sick, holiday, lwop };
 }
 
 // A pay period is "ready to send" once every week containing logged data
@@ -314,14 +318,18 @@ function weekTotals(state, weekStartIso, userId, now = Date.now()) {
     const pto = lv.filter(l => l.date === d && l.type === 'pto').reduce((a, l) => a + l.hours, 0);
     const sick = lv.filter(l => l.date === d && l.type === 'sick').reduce((a, l) => a + l.hours, 0);
     const holiday = lv.filter(l => l.date === d && l.type === 'holiday').reduce((a, l) => a + l.hours, 0);
-    return { date: d, work, pto, sick, holiday, total: work + pto + sick + holiday };
+    const lwop = lv.filter(l => l.date === d && l.type === 'lwop').reduce((a, l) => a + l.hours, 0);
+    // LWOP is UNPAID — explicitly excluded from "total" so payroll math
+    // never accidentally pays for it.
+    return { date: d, work, pto, sick, holiday, lwop, total: work + pto + sick + holiday };
   });
   const total = perDay.reduce((a, d) => a + d.total, 0);
   const workTotal = perDay.reduce((a, d) => a + d.work, 0);
   const ptoTotal = perDay.reduce((a, d) => a + d.pto, 0);
   const sickTotal = perDay.reduce((a, d) => a + d.sick, 0);
   const holidayTotal = perDay.reduce((a, d) => a + d.holiday, 0);
-  return { perDay, total, workTotal, ptoTotal, sickTotal, holidayTotal };
+  const lwopTotal = perDay.reduce((a, d) => a + d.lwop, 0);
+  return { perDay, total, workTotal, ptoTotal, sickTotal, holidayTotal, lwopTotal };
 }
 
 // ----- Approval handoff (URL hash payload) --------------------------------
