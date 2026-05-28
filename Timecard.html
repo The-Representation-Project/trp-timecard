@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Timecard — The Representation Project</title>
 
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="assets/TRP-Icon-Blue.png" />
 
@@ -30,8 +34,8 @@
   <div id="root"></div>
 
   <!-- Plain JS helpers -->
-  <script src="app/util.js"></script>
-  <script src="app/printReceipt.js"></script>
+  <script src="app/util.js?v=3"></script>
+  <script src="app/printReceipt.js?v=3"></script>
 
   <!-- Supabase SDK (for optional cloud sync). Loaded eagerly so
        magic-link redirects are handled at page-load. -->
@@ -39,17 +43,17 @@
   <script src="app/cloudSync.js"></script>
 
   <!-- React components (order matters: dependencies before dependents) -->
-  <script type="text/babel" src="app/store.jsx"></script>
-  <script type="text/babel" src="app/ui.jsx"></script>
-  <script type="text/babel" src="app/PayPeriodApproved.jsx"></script>
-  <script type="text/babel" src="app/Send.jsx"></script>
-  <script type="text/babel" src="app/CloudSettings.jsx"></script>
-  <script type="text/babel" src="app/Home.jsx"></script>
-  <script type="text/babel" src="app/Timesheet.jsx"></script>
-  <script type="text/babel" src="app/TimeOff.jsx"></script>
-  <script type="text/babel" src="app/History.jsx"></script>
-  <script type="text/babel" src="app/Approval.jsx"></script>
-  <script type="text/babel" src="app/App.jsx"></script>
+  <script type="text/babel" src="app/store.jsx?v=3"></script>
+  <script type="text/babel" src="app/ui.jsx?v=3"></script>
+  <script type="text/babel" src="app/PayPeriodApproved.jsx?v=3"></script>
+  <script type="text/babel" src="app/Send.jsx?v=3"></script>
+  <script type="text/babel" src="app/CloudSettings.jsx?v=3"></script>
+  <script type="text/babel" src="app/Home.jsx?v=3"></script>
+  <script type="text/babel" src="app/Timesheet.jsx?v=3"></script>
+  <script type="text/babel" src="app/TimeOff.jsx?v=3"></script>
+  <script type="text/babel" src="app/History.jsx?v=3"></script>
+  <script type="text/babel" src="app/Approval.jsx?v=3"></script>
+  <script type="text/babel" src="app/App.jsx?v=3"></script>
 
   <!-- TRP signature lowercase-i enforcement -->
   <script src="assets/trp-headline-i.js"></script>

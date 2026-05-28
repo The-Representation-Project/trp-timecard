@@ -784,12 +784,22 @@ function makeActions(update) {
     // too, since the whole submission is being replaced.)
     cancelPayPeriodSend(periodStartIso, userId) {
       update(s => {
+        const pp = payPeriodForDate(periodStartIso, s.settings);
+        const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
         let payPeriods = s.payPeriods.map(p =>
           (p.periodStart === periodStartIso && p.userId === userId && p.status === 'awaiting_approval')
             ? { ...p, status: 'pending', sentToApproverAt: null }
             : p
         );
-        return { ...s, payPeriods };
+        // Unlock the constituent weeks too — Erika needs to edit hours
+        // before resending. Approved weeks stay locked (already signed off).
+        const weekSubmissions = s.weekSubmissions.map(w => {
+          if (w.userId !== userId) return w;
+          if (!weekStarts.includes(w.weekStart)) return w;
+          if (w.status !== 'submitted') return w;
+          return { ...w, status: 'draft' };
+        });
+        return { ...s, payPeriods, weekSubmissions };
       });
     },
 

@@ -235,11 +235,20 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
   });
 
   function save() {
-    if (!clockIn) {
+    // For NEW entries, clock-in is required (we have no fallback).
+    // For EXISTING entries, fall back to whatever's already saved if a
+    // field is blank — so the user can edit just the clock-out (or just
+    // the break) without re-typing everything.
+    if (!existing && !clockIn) {
       alert('Please enter a Clock In time.');
       return;
     }
-    const clockInIso = TC.dateAndTimeToIso(date, clockIn);
+    const effectiveClockIn = clockIn || (existing && existing.clockIn ? TC.isoToTimeInput(existing.clockIn) : '');
+    if (!effectiveClockIn) {
+      alert('Please enter a Clock In time.');
+      return;
+    }
+    const clockInIso = TC.dateAndTimeToIso(date, effectiveClockIn);
     const clockOutIso = clockOut ? TC.dateAndTimeToIso(date, clockOut) : null;
     const breakNum = breakMinutes === '' ? 0 : (Number(breakMinutes) || 0);
     if (existing) {
@@ -253,7 +262,7 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
     } else {
       actions.addManualEntry(userId, {
         date,
-        clockIn,
+        clockIn: effectiveClockIn,
         clockOut: clockOut || null,
         breakMinutes: breakNum,
         estimated: !!estimated,
