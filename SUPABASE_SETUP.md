@@ -83,6 +83,19 @@ After you sign up yourself in Step 6 below, come back here and:
 
 This locks the door behind you so no one else can create an account.
 
+## Step 4b — Set the redirect URL (required for sign-in links)
+
+Magic-link emails only work if Supabase knows where to send you back.
+
+1. Left sidebar → **Authentication** → **URL Configuration**.
+2. Set **Site URL** to:
+   `https://the-representation-project.github.io/trp-timecard/Timecard.html`
+3. Under **Redirect URLs**, click **Add URL** and paste the **same exact URL**:
+   `https://the-representation-project.github.io/trp-timecard/Timecard.html`
+4. **Save**.
+
+The app also shows this URL inside **⚙ Cloud Sync** — it must match character-for-character.
+
 ## Step 5 — Copy the two values I need
 
 1. Left sidebar (very bottom) → **Project Settings** → **API**.
@@ -96,7 +109,7 @@ your data.)
 
 ## Step 6 — Plug them into the app
 
-1. Open your Timecard app (`https://trperika.github.io/trp-timecard/`).
+1. Open your Timecard app (`https://the-representation-project.github.io/trp-timecard/Timecard.html`).
 2. Top right of the app, click the **⚙ Cloud Sync** button.
 3. Paste your **Project URL** into the URL field.
 4. Paste your **anon key** into the API Key field.
@@ -115,8 +128,12 @@ inbox on the phone. Both devices now share the same data, live.
 
 ## What if something goes wrong?
 
+- **Still says "Local only"** — you haven't pasted URL + key yet, or you cleared config.
+- **Says "Sync — sign in"** — configured but not signed in; send yourself a magic link.
+- **Magic link opens wrong page / doesn't sign you in** — fix Step 4b redirect URL (most common issue).
+- **"Sync error" after sign-in** — open ⚙ → **Test cloud connection**. If it mentions `tc_state`, re-run the SQL from Step 3.
 - **"Email rate limit exceeded"** — Supabase's free tier limits magic-link emails to a few per hour. Wait 10 minutes and try again.
-- **Link in email goes to wrong place** — In Supabase: Authentication → URL Configuration → "Site URL" → set to `https://trperika.github.io/trp-timecard/` and save.
+- **Link in email goes to wrong place** — In Supabase: Authentication → URL Configuration → set **Site URL** and **Redirect URLs** to `https://the-representation-project.github.io/trp-timecard/Timecard.html` (must match exactly — the app shows this URL in ⚙ Cloud Sync).
 - **Want to start over?** — In the app, ⚙ Cloud Sync → Sign Out → Clear Cloud Config. Then re-paste your URL + key.
 
 ## What does cloud sync cost?

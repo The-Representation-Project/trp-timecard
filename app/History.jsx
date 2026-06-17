@@ -2,6 +2,84 @@
 
 const { useState: useStateH, useMemo: useMemoH } = React;
 
+function ImportHistoricalPanel() {
+  const [open, setOpen] = useStateH(false);
+  const [done, setDone] = useStateH(() => window.HistoricalImport && window.HistoricalImport.alreadyImported());
+
+  if (!window.HistoricalImport) return null;
+
+  const preview = window.HistoricalImport.summarize(window.HistoricalImport.buildErikaMayJuneEntries());
+
+  function run() {
+    if (!confirm(
+      'Import May 4 – June 15, 2026 hours?\n\n' +
+      '• M–F 8:00–4:30 (30 min lunch) from May 4\n' +
+      '• Jun 9–12: 12.5 hr shifts (8:00 AM–9:00 PM)\n' +
+      '• Sat Jun 13: 7:30 AM–8:00 PM (12 hrs)\n' +
+      '• Sets PTO to 10.93 hrs, Sick to 9.44 hrs\n' +
+      '• Marks May pay periods as approved (offline)\n\n' +
+      'Re-running replaces the previous import (safe to click again).'
+    )) return;
+
+    const summary = window.HistoricalImport.runImport();
+    if (summary) {
+      setDone(true);
+      setOpen(false);
+      alert(
+        'Import complete!\n\n' +
+        summary.days + ' work days · ' + summary.total.toFixed(2) + ' total hrs\n' +
+        'Jun 1–15 pay period: ' + summary.juneTotal.toFixed(2) + ' hrs\n\n' +
+        'May pay periods marked approved (offline). Check Timesheet → week of Jun 9 to verify.'
+      );
+    }
+  }
+
+  return (
+    <>
+      <button className="btn ghost" onClick={() => setOpen(true)}>
+        {done ? '↻ Re-import May–June hours' : '+ Import May–June hours'}
+      </button>
+      {open && (
+        <Modal title="Import previous hours" subtitle="May 4 – June 15, 2026" onClose={() => setOpen(false)} maxWidth={560}>
+          <div className="cert-box" style={{borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
+            <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 6}}>
+              What gets added
+            </strong>
+            <ul className="tiny" style={{margin: 0, paddingLeft: 18, lineHeight: 1.6}}>
+              <li><strong>May 4–31:</strong> Mon–Fri, 8:00 AM–4:30 PM, 30 min lunch ({preview.total - preview.juneTotal > 0 ? (preview.total - preview.juneTotal).toFixed(0) : '160'} hrs)</li>
+              <li><strong>Jun 1–8, 15:</strong> same standard 8 hr day</li>
+              <li><strong>Jun 9–12:</strong> 12.5 hr shifts (8:00 AM–9:00 PM, 30 min lunch)</li>
+              <li><strong>Sat Jun 13:</strong> 7:30 AM–8:00 PM, 30 min lunch (12 hrs)</li>
+              <li><strong>PTO balance → 10.93 hrs</strong> · <strong>Sick → 9.44 hrs</strong></li>
+              <li><strong>May pay periods</strong> marked approved (offline backfill)</li>
+            </ul>
+          </div>
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12,
+            margin: '14px 0', padding: '12px 14px',
+            background: 'var(--trp-cream-100)', borderRadius: 'var(--radius-sm)',
+          }}>
+            <div>
+              <div className="eyebrow">All imported days</div>
+              <div style={{fontWeight: 700, fontSize: 22, color: 'var(--trp-navy)'}}>{preview.total.toFixed(2)} hrs</div>
+              <div className="tiny muted">{preview.days} sessions</div>
+            </div>
+            <div>
+              <div className="eyebrow">Jun 1–15 pay period</div>
+              <div style={{fontWeight: 700, fontSize: 22, color: 'var(--trp-navy)'}}>{preview.juneTotal.toFixed(2)} hrs</div>
+              <div className="tiny muted">Jun 1–15 target: 118.00 hrs</div>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn" onClick={run}>Import now</button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 function History() {
   const { state } = useStore();
   const user = currentUser(state);
@@ -45,6 +123,7 @@ function History() {
           <h1>Past Weeks & Submissions</h1>
         </div>
         <div className="actions">
+          <ImportHistoricalPanel />
           <button className="btn" onClick={() => setExportOpen(true)}>↓ Export CSV</button>
         </div>
       </div>

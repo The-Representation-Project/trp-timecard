@@ -15,7 +15,9 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
   const [showOffline, setShowOffline] = useStateSend(false);
   const [confirmCancel, setConfirmCancel] = useStateSend(false);
   const pp = payPeriodForDate(payPeriod.periodStart, state.settings);
-  const totals = payPeriodTotals(state, payPeriod.periodStart, payPeriod.userId);
+  const todayIso = TC.isoDate(new Date());
+  const breakdown = payPeriodBreakdown(state, payPeriod.periodStart, payPeriod.userId, todayIso);
+  const totals = breakdown;
   const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
   const childWeeks = weekStarts
     .map(ws => ({ ws, sub: weekSubmission(state, ws, payPeriod.userId), tot: weekTotals(state, ws, payPeriod.userId) }))
@@ -61,8 +63,14 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
             {TC.fmtHours(totals.total)}
           </div>
           <div className="tiny muted" style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 10, marginTop: 2}}>
-            Hours Worked
+            Period Total
           </div>
+          {totals.assumed > 0 && (
+            <div className="tiny" style={{marginTop: 6, lineHeight: 1.4, color: 'var(--trp-orange-700)', fontWeight: 700}}>
+              {TC.fmtHours(totals.confirmed)} confirmed<br />
+              + {TC.fmtHours(totals.assumed)} assumed
+            </div>
+          )}
         </div>
       </div>
 
@@ -88,6 +96,14 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
           </div>
         )}
       </div>
+
+      {totals.assumed > 0 && (
+        <div className="comment-block warn" style={{marginBottom: 14}}>
+          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Early pay-period submission</span>
+          Includes {TC.fmtHours(totals.assumed)} hrs assumed for days still to come ({TC.fmtDayShort(todayIso)} → {TC.fmtDayShort(pp.periodEnd)}).
+          Katrina will see the full {TC.fmtHours(totals.total)} hr period total when you send.
+        </div>
+      )}
 
       <table className="mini-table">
         <thead>
@@ -325,7 +341,9 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
   const emp = employee(state);
   const appr = director(state);
   const pp = payPeriodForDate(periodStartIso, state.settings);
-  const totals = payPeriodTotals(state, periodStartIso, emp.id);
+  const todayIso = TC.isoDate(new Date());
+  const breakdown = payPeriodBreakdown(state, periodStartIso, emp.id, todayIso);
+  const totals = breakdown;
 
   const [copied, setCopied] = useStateSend(false);
   const [opened, setOpened] = useStateSend(false);
@@ -353,30 +371,14 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
 
   const subject = `Timecard approval needed · ${emp.name} · ${pp.label}`;
 
-  // Count anything dated AFTER today in this period — those hours are
-  // "assumptions" Erika is attesting to so she can submit before payroll
-  // runs on the 27th. Surface them explicitly so Katrina knows.
-  const todayIso = TC.isoDate(new Date());
-  let assumedHrs = 0;
-  state.timeEntries.forEach(e => {
-    if (e.userId === emp.id && e.date > todayIso && e.date >= pp.periodStart && e.date <= pp.periodEnd) {
-      assumedHrs += TC.entryHours(e);
-    }
-  });
-  state.leaveEntries.forEach(l => {
-    if (l.userId === emp.id && l.date > todayIso && l.date >= pp.periodStart && l.date <= pp.periodEnd) {
-      assumedHrs += l.hours;
-    }
-  });
-  const hasAssumptions = assumedHrs > 0;
-  const assumptionLine = hasAssumptions
-    ? `\nThis includes ${TC.fmtHours(assumedHrs)} hrs of assumed time for upcoming days (${TC.fmtDayShort(todayIso)} → ${TC.fmtDayShort(pp.periodEnd)}) — payroll runs before the period closes, so I'm attesting to those hours now and will adjust if anything changes.\n`
+  const assumptionLine = totals.assumed > 0
+    ? `\nBreakdown: ${TC.fmtHours(totals.confirmed)} hrs confirmed (logged through ${TC.fmtDayShort(todayIso)}) + ${TC.fmtHours(totals.assumed)} hrs assumed for upcoming days before period close. Payroll runs on the ${TC.parseDate(pp.payDate).getDate()}th, so I'm attesting to those hours now and will adjust if anything changes.\n`
     : '';
 
   const body =
     `Hi ${appr.name.split(/\s+|-/)[0]},\n\n` +
     `My timecard for ${pp.label} (${TC.fmtRange(pp.periodStart, pp.periodEnd)}) is ready for your approval.\n\n` +
-    `Hours Worked: ${TC.fmtHours(totals.total)} hrs (${TC.fmtHours(totals.work)} clocked, ${TC.fmtHours(totals.pto)} PTO, ${TC.fmtHours(totals.sick)} sick${(totals.holiday || 0) > 0 ? `, ${TC.fmtHours(totals.holiday)} holiday` : ''}${(totals.lwop || 0) > 0 ? `, ${TC.fmtHours(totals.lwop)} LWOP` : ''})\n` +
+    `Period total: ${TC.fmtHours(totals.total)} hrs (${TC.fmtHours(totals.work)} clocked, ${TC.fmtHours(totals.pto)} PTO, ${TC.fmtHours(totals.sick)} sick${(totals.holiday || 0) > 0 ? `, ${TC.fmtHours(totals.holiday)} holiday` : ''}${(totals.lwop || 0) > 0 ? `, ${TC.fmtHours(totals.lwop)} LWOP` : ''})\n` +
     assumptionLine +
     `Pay date: ${payDateLabel}\n` +
     `Approval needed by: ${deadlineLabel}\n\n` +
@@ -415,7 +417,7 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
   return (
     <Modal
       title="Send approval request to Katrina"
-      subtitle={`${pp.label} · ${TC.fmtRange(pp.periodStart, pp.periodEnd)} · ${TC.fmtHours(totals.total)} hrs`}
+      subtitle={`${pp.label} · ${TC.fmtRange(pp.periodStart, pp.periodEnd)} · ${TC.fmtHours(totals.total)} hrs${totals.assumed > 0 ? ` (${TC.fmtHours(totals.assumed)} assumed)` : ''}`}
       onClose={onClose}
       maxWidth={620}
     >
@@ -464,6 +466,15 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
           Hit Send in your email client to deliver the approval request. If
           nothing opened, use the copy-link button below and paste it into a
           new email to {appr.email}.
+        </div>
+      )}
+
+      {totals.assumed > 0 && (
+        <div className="comment-block warn" style={{margin: '0 0 14px'}}>
+          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Includes assumed hours</span>
+          Katrina will see <strong>{TC.fmtHours(totals.total)} hrs total</strong> —{' '}
+          {TC.fmtHours(totals.confirmed)} confirmed through {TC.fmtDayShort(todayIso)} plus{' '}
+          {TC.fmtHours(totals.assumed)} assumed for days still to come in this pay period.
         </div>
       )}
 

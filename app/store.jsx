@@ -20,8 +20,8 @@ const EMPLOYEE = {
   email: 'erika@therepproject.org',
   role: 'employee',
   title: 'Director of Operations',
-  ptoBalance: 3.34,
-  sickBalance: 2.88,
+  ptoBalance: 10.93,
+  sickBalance: 9.44,
 };
 
 const APPROVER = {
@@ -116,7 +116,13 @@ function StoreProvider({ children }) {
     const cs = window.CloudSync;
     if (cs && cs.status() === 'signed-in') {
       // Debounce: only the last change in a 600ms window hits the network.
-      const t = setTimeout(() => { cs.save(state); }, 600);
+      const t = setTimeout(() => {
+        cs.save(state).then((result) => {
+          if (result && result.error) {
+            console.error('[Timecard] Cloud save failed:', result.error);
+          }
+        });
+      }, 600);
       return () => clearTimeout(t);
     }
   }, [state]);
@@ -128,9 +134,14 @@ function StoreProvider({ children }) {
     if (!cs) return;
 
     async function pullRemote() {
+      await cs.whenReady;
       if (cs.status() !== 'signed-in') return;
       const { data, error } = await cs.load();
-      if (error || !data) return;
+      if (error) {
+        console.error('[Timecard] Cloud load failed:', error);
+        return;
+      }
+      if (!data) return;
       // Defensive merge with our schema defaults so any newly-added
       // settings keys don't blow up older cloud rows.
       const base = emptyState();
@@ -291,6 +302,33 @@ function payPeriodTotals(state, periodStartIso, userId) {
   return { total, work, pto, sick, holiday, lwop };
 }
 
+// Hours flagged as assumptions for early pay-period approval (before period ends).
+// Counts entries marked Estimated OR dated after today, plus leave on future days.
+function payPeriodAssumptionHours(state, periodStartIso, userId, todayIso) {
+  const TC = window.TC;
+  const refDay = todayIso || TC.isoDate(new Date());
+  const pp = payPeriodForDate(periodStartIso, state.settings);
+  let assumed = 0;
+  state.timeEntries.forEach(e => {
+    if (e.userId !== userId) return;
+    if (e.date < pp.periodStart || e.date > pp.periodEnd) return;
+    if (e.estimated || e.date > refDay) assumed += TC.entryHours(e);
+  });
+  state.leaveEntries.forEach(l => {
+    if (l.userId !== userId) return;
+    if (l.date < pp.periodStart || l.date > pp.periodEnd) return;
+    if (l.date > refDay) assumed += l.hours;
+  });
+  return assumed;
+}
+
+function payPeriodBreakdown(state, periodStartIso, userId, todayIso) {
+  const totals = payPeriodTotals(state, periodStartIso, userId);
+  const assumed = payPeriodAssumptionHours(state, periodStartIso, userId, todayIso);
+  const confirmed = Math.max(0, totals.total - assumed);
+  return { ...totals, assumed, confirmed };
+}
+
 // A pay period is "ready to send" once every week containing logged data
 // inside the period has been submitted (status=submitted OR approved).
 function payPeriodReady(state, periodStartIso, userId) {
@@ -343,6 +381,9 @@ function buildApprovalRequest(state, periodStartIso) {
   const appr = director(state);
   const pp = payPeriodForDate(periodStartIso, state.settings);
   const totals = payPeriodTotals(state, periodStartIso, emp.id);
+  const todayIso = TC.isoDate(new Date());
+  const assumed = payPeriodAssumptionHours(state, periodStartIso, emp.id, todayIso);
+  const confirmed = Math.max(0, totals.total - assumed);
 
   const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
   const weeks = weekStarts.map(ws => {
@@ -396,7 +437,7 @@ function buildApprovalRequest(state, periodStartIso) {
     employee: { name: emp.name, title: emp.title, email: emp.email },
     approver: { name: appr.name, title: appr.title, email: appr.email },
     weeks,
-    totals,
+    totals: { ...totals, assumed, confirmed },
     requestedAt: new Date().toISOString(),
   };
 }
@@ -865,6 +906,102 @@ function makeActions(update) {
       update(s => ({ ...s, settings: { ...s.settings, ...patch } }));
     },
 
+    // One-time bulk import for backfilling hours before the app existed.
+    // Re-running replaces prior rows with the same importTag (idempotent).
+    importHistoricalBatch({
+      userId,
+      entries,
+      ptoBalance,
+      sickBalance,
+      approvePeriodStarts = [],
+      approverName,
+      approverTitle,
+      importTag = 'hist-v1',
+    }) {
+      update(s => {
+        const TC = window.TC;
+        const emp = s.users.find(u => u.id === userId);
+        if (!emp) return s;
+
+        let timeEntries = s.timeEntries.filter(e => e.importTag !== importTag);
+        const newEntries = entries.map(e => {
+          const weekId = TC.weekRange(TC.parseDate(e.date), 0).startIso;
+          return {
+            id: 't-' + TC.uid(),
+            userId,
+            date: e.date,
+            clockIn: TC.dateAndTimeToIso(e.date, e.in),
+            clockOut: TC.dateAndTimeToIso(e.date, e.out),
+            breakMinutes: e.break != null ? e.break : 30,
+            manuallyEdited: true,
+            estimated: !!e.estimated,
+            importTag,
+            weekId,
+          };
+        });
+        timeEntries = [...timeEntries, ...newEntries];
+
+        let weekSubmissions = [...s.weekSubmissions];
+        const touchedWeeks = new Set(newEntries.map(e => e.weekId));
+        touchedWeeks.forEach(weekStart => {
+          if (!weekSubmissions.find(w => w.weekStart === weekStart && w.userId === userId)) {
+            weekSubmissions = [...weekSubmissions, {
+              id: 'w-' + TC.uid(),
+              userId,
+              weekStart,
+              weekEnd: TC.weekDays(weekStart)[6],
+              status: 'draft',
+              directorComment: '',
+              submittedAt: null,
+              decidedAt: null,
+            }];
+          }
+        });
+
+        let payPeriods = [...s.payPeriods];
+        const signedAt = new Date().toISOString();
+        approvePeriodStarts.forEach(periodStartIso => {
+          const pp = payPeriodForDate(periodStartIso, s.settings);
+          const existing = payPeriods.find(p => p.periodStart === pp.periodStart && p.userId === userId);
+          const offline = {
+            status: 'approved',
+            directorComment: 'Backfilled — approved via payroll before using Timecard app.',
+            decidedAt: signedAt,
+            signedName: approverName || 'Katrina Steffek',
+            signedTitle: approverTitle || 'Approver',
+            signedAt,
+            offline: true,
+            accrued: { pto: 0, sick: 0, when: signedAt },
+          };
+          if (existing) {
+            payPeriods = payPeriods.map(p => p.id === existing.id ? { ...p, ...offline } : p);
+          } else {
+            payPeriods = [...payPeriods, {
+              id: 'pp-' + TC.uid(),
+              userId,
+              periodStart: pp.periodStart,
+              periodEnd: pp.periodEnd,
+              ...offline,
+            }];
+          }
+          const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
+          weekSubmissions = weekSubmissions.map(w =>
+            (weekStarts.includes(w.weekStart) && w.userId === userId)
+              ? { ...w, status: 'approved', decidedAt: signedAt, directorComment: offline.directorComment }
+              : w
+          );
+        });
+
+        let users = s.users.map(u => u.id !== userId ? u : {
+          ...u,
+          ptoBalance: ptoBalance != null ? Number(ptoBalance) : u.ptoBalance,
+          sickBalance: sickBalance != null ? Number(sickBalance) : u.sickBalance,
+        });
+
+        return { ...s, users, timeEntries, weekSubmissions, payPeriods };
+      });
+    },
+
     // For testing only — wipes all logged data. Not surfaced in normal UI;
     // expose via console: `window.__tc.actions.factoryReset()`.
     factoryReset() {
@@ -885,7 +1022,8 @@ Object.assign(window, {
   currentUser, employee, director,
   entriesForWeek, leavesForWeek, weekSubmission, isWeekLocked, weekTotals,
   payPeriodForDate, payPeriodRecord, payPeriodWeeks, payPeriodWeekStarts,
-  payPeriodReady, payPeriodTotals, payPeriodSubmitDeadline,
+  payPeriodReady, payPeriodTotals, payPeriodAssumptionHours, payPeriodBreakdown,
+  payPeriodSubmitDeadline,
   buildApprovalRequest, buildApprovalReceipt,
   encodePayload, decodePayload,
   approvalRequestUrl, approvalReceiptUrl, readHashPayload,

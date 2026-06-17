@@ -64,6 +64,8 @@ function ApprovalTopbar({ payload }) {
 
 function ApprovalReviewPage({ payload, onSign }) {
   const { pp, employee, approver, weeks, totals } = payload;
+  const assumed = totals.assumed || 0;
+  const confirmed = totals.confirmed != null ? totals.confirmed : Math.max(0, totals.total - assumed);
 
   const payDateLabel = TC.parseDate(pp.payDate).toLocaleDateString(undefined, {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -84,16 +86,31 @@ function ApprovalReviewPage({ payload, onSign }) {
           <div className="muted" style={{fontSize: 14}}>{periodLabel} &nbsp;·&nbsp; sent {requestedLabel}</div>
         </div>
         <div className="approval-totals">
-          <div className="eyebrow">Hours Worked</div>
+          <div className="eyebrow">Period Total</div>
           <div className="big-num">{TC.fmtHours(totals.total)}<span className="unit">hrs</span></div>
-          <div className="tiny muted">
-            across {weeks.length} week{weeks.length === 1 ? '' : 's'}
-            {((totals.pto || 0) + (totals.sick || 0) + (totals.holiday || 0)) > 0 && (
-              <> · includes PTO, sick &amp; holiday</>
-            )}
-          </div>
+          {assumed > 0 ? (
+            <div className="tiny" style={{color: 'var(--trp-orange-700)', fontWeight: 700, marginTop: 4}}>
+              {TC.fmtHours(confirmed)} confirmed · {TC.fmtHours(assumed)} assumed
+            </div>
+          ) : (
+            <div className="tiny muted">
+              across {weeks.length} week{weeks.length === 1 ? '' : 's'}
+              {((totals.pto || 0) + (totals.sick || 0) + (totals.holiday || 0)) > 0 && (
+                <> · includes PTO, sick &amp; holiday</>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {assumed > 0 && (
+        <div className="comment-block warn" style={{marginBottom: 20}}>
+          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Early submission · assumed hours included</span>
+          This pay period runs through {TC.fmtDayShort(pp.periodEnd)}. Some hours are marked as
+          estimates for days not yet worked — {TC.fmtHours(assumed)} hrs assumed,{' '}
+          {TC.fmtHours(confirmed)} hrs confirmed through today.
+        </div>
+      )}
 
       <div className="card pay-date-card">
         <div>

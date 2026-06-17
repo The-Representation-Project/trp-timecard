@@ -89,13 +89,20 @@ function fmtRange(startIso, endIso) {
 }
 
 // Compute worked hours from a TimeEntry, capped at clock-out (or now if open).
+// Estimated sessions without a clock-out count as an 8h day (minus break) so
+// early pay-period submissions can include assumed days 14–15 on the 13th.
 function entryHours(entry, now = Date.now()) {
   if (!entry.clockIn) return 0;
   const start = new Date(entry.clockIn).getTime();
-  const end = entry.clockOut ? new Date(entry.clockOut).getTime() : now;
   const breakMs = (entry.breakMinutes || 0) * MIN;
-  const worked = Math.max(0, end - start - breakMs);
-  return worked / HR;
+  if (entry.clockOut) {
+    const end = new Date(entry.clockOut).getTime();
+    return Math.max(0, end - start - breakMs) / HR;
+  }
+  if (entry.estimated) {
+    return Math.max(0, 8 - breakMs / HR);
+  }
+  return Math.max(0, now - start - breakMs) / HR;
 }
 
 // Time input helpers: convert ISO -> "HH:MM" (local), and back to ISO given a date.

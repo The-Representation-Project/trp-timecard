@@ -23,25 +23,33 @@ function useCloudStatus() {
 
 function CloudStatusBadge({ onClick }) {
   const status = useCloudStatus();
+  const [syncError, setSyncError] = useStateCS(() =>
+    window.CloudSync ? window.CloudSync.getLastError() : null
+  );
+  useEffectCS(() => {
+    if (!window.CloudSync) return;
+    return window.CloudSync.onErrorChange(setSyncError);
+  }, []);
+
   const label = {
     'unconfigured': 'Local only',
     'signed-out': 'Sync — sign in',
-    'signed-in': '✓ Synced',
+    'signed-in': syncError ? 'Sync error' : '✓ Synced',
   }[status] || status;
   const color = {
     'unconfigured': 'var(--trp-stone-700)',
     'signed-out': 'var(--trp-orange-700)',
-    'signed-in': 'var(--trp-pacific-700)',
+    'signed-in': syncError ? 'var(--trp-coral-700)' : 'var(--trp-pacific-700)',
   }[status] || 'var(--trp-stone-700)';
   const bg = {
     'unconfigured': 'var(--trp-cream-100)',
     'signed-out': 'var(--trp-orange-100)',
-    'signed-in': 'var(--trp-pacific-50)',
+    'signed-in': syncError ? 'var(--trp-coral-100)' : 'var(--trp-pacific-50)',
   }[status] || 'var(--trp-cream-100)';
   return (
     <button
       onClick={onClick}
-      title="Cloud sync settings"
+      title={syncError || 'Cloud sync settings'}
       style={{
         background: bg, color, border: `1px solid ${color}`,
         borderRadius: 'var(--radius-sm)',
@@ -53,6 +61,26 @@ function CloudStatusBadge({ onClick }) {
     >
       ⚙ {label}
     </button>
+  );
+}
+
+function SupabaseRedirectHelp() {
+  const redirectUrl = window.CloudSync ? window.CloudSync.getRedirectUrl() : '';
+  if (!redirectUrl) return null;
+  return (
+    <div className="cert-box" style={{borderLeftColor: 'var(--trp-orange)', background: 'var(--trp-orange-100)', marginBottom: 14}}>
+      <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 6}}>
+        Required in Supabase
+      </strong>
+      In Supabase → <strong>Authentication → URL Configuration</strong>, set:
+      <div className="tiny" style={{marginTop: 8, lineHeight: 1.5}}>
+        <div><strong>Site URL:</strong></div>
+        <code style={{display: 'block', wordBreak: 'break-all', margin: '4px 0 8px'}}>{redirectUrl}</code>
+        <div><strong>Redirect URLs</strong> (add this exact line):</div>
+        <code style={{display: 'block', wordBreak: 'break-all', marginTop: 4}}>{redirectUrl}</code>
+      </div>
+      If the sign-in email link opens the wrong page, this is almost always why.
+    </div>
   );
 }
 
@@ -130,6 +158,8 @@ function ConfigureForm({ onClose }) {
         </div>
       </label>
 
+      <SupabaseRedirectHelp />
+
       {error && (
         <div className="comment-block warn" style={{margin: '8px 0 12px'}}>{error}</div>
       )}
@@ -170,6 +200,7 @@ function SignInForm({ onClose }) {
   if (sent) {
     return (
       <>
+        <SupabaseRedirectHelp />
         <div className="comment-block" style={{borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
           <span className="from" style={{color: 'var(--trp-pacific-700)'}}>Check your inbox</span>
           We sent a sign-in link to <strong>{email}</strong>. Click the link
@@ -186,6 +217,7 @@ function SignInForm({ onClose }) {
 
   return (
     <>
+      <SupabaseRedirectHelp />
       <div className="cert-box" style={{borderLeftColor: 'var(--trp-pacific-blue)'}}>
         Sign in to start syncing this device with your cloud data. You'll
         get a one-click sign-in link by email — no password.
@@ -222,7 +254,12 @@ function SignedInPanel({ onClose }) {
   const { state, actions } = useStore();
   const user = window.CloudSync.getUser();
   const [migrationState, setMigrationState] = useStateCS(null);
+  const [syncError, setSyncError] = useStateCS(() => window.CloudSync.getLastError());
+  const [testing, setTesting] = useStateCS(false);
+  const [testResult, setTestResult] = useStateCS(null);
   // null | 'asking' | 'uploading' | 'done'
+
+  useEffectCS(() => window.CloudSync.onErrorChange(setSyncError), []);
 
   // First sign-in on a device that has local-only data → offer to upload.
   useEffectCS(() => {
@@ -259,6 +296,14 @@ function SignedInPanel({ onClose }) {
     setMigrationState('done');
   }
 
+  async function runTest() {
+    setTesting(true);
+    setTestResult(null);
+    const result = await window.CloudSync.testConnection();
+    setTesting(false);
+    setTestResult(result);
+  }
+
   async function signOut() {
     if (confirm('Sign out of cloud sync? Your local data stays on this device.')) {
       await window.CloudSync.signOut();
@@ -281,6 +326,34 @@ function SignedInPanel({ onClose }) {
           same app on your phone, sign in with the same email, and you'll
           see the same data.
         </div>
+      </div>
+
+      {syncError && (
+        <div className="comment-block warn" style={{margin: '0 0 14px'}}>
+          <span className="from">Sync problem</span>
+          {syncError}
+          <div className="tiny muted" style={{marginTop: 6}}>
+            Common fixes: run the SQL in SUPABASE_SETUP.md, check Redirect URLs
+            (see below), or sign out and click the magic link again on this device.
+          </div>
+        </div>
+      )}
+
+      <SupabaseRedirectHelp />
+
+      <div style={{margin: '0 0 14px'}}>
+        <button className="btn ghost small" onClick={runTest} disabled={testing}>
+          {testing ? 'Testing…' : 'Test cloud connection'}
+        </button>
+        {testResult && testResult.ok && (
+          <span className="tiny muted" style={{marginLeft: 10}}>✓ Connected</span>
+        )}
+        {testResult && testResult.error && (
+          <div className="comment-block warn" style={{marginTop: 10}}>
+            {testResult.error}
+            {testResult.hint && <div className="tiny muted" style={{marginTop: 4}}>{testResult.hint}</div>}
+          </div>
+        )}
       </div>
 
       {migrationState === 'asking' && (
