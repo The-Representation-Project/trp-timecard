@@ -100,23 +100,30 @@ function Confirm({ open, title, message, confirmLabel = 'Confirm', danger, onCan
   );
 }
 
-// Pretty status banner for a week (under/at/over 40)
-function WeekStatusBanner({ totals, submission }) {
+// Pretty status banner for a week (under/at/over 40). Approval is pay-period
+// level — this banner tracks hours only, not weekly sign-off.
+function WeekStatusBanner({ totals, state, userId, weekStart }) {
   const total = totals.total;
   let kind = 'under', headline = `${TC.fmtHours(total)} HOURS THiS WEEK`;
   if (total === 40) { kind = 'exact'; headline = 'EXACTLY 40 HOURS'; }
   else if (total > 40) { kind = 'over'; headline = `${TC.fmtHours(total)} HOURS — ${TC.fmtHours(total - 40)} OVER 40`; }
   else { headline = `${TC.fmtHours(total)} HOURS — ${TC.fmtHours(40 - total)} TO GO`; }
-  const status = submission ? submission.status : 'draft';
+
+  const pp = payPeriodForDate(weekStart, state.settings);
+  const rec = payPeriodRecord(state, pp.periodStart, userId);
+  let note = 'Edit any day below · send the whole pay period from Home';
+  if (rec && rec.status === 'approved') note = `${pp.label} approved · days in this period are locked`;
+  else if (rec && rec.status === 'awaiting_approval') note = `${pp.label} sent to Katrina · still editable until signed`;
+
   return (
     <div className={`week-banner ${kind}`}>
       <div>
-        <div className="meta">Weekly status · 40 hr standard</div>
+        <div className="meta">Weekly hours · 40 hr standard</div>
         <div className="headline">{headline}</div>
+        <div className="tiny muted" style={{marginTop: 6, textTransform: 'none', letterSpacing: 0, fontWeight: 400}}>{note}</div>
       </div>
       <div style={{display: 'flex', alignItems: 'center', gap: 16}}>
         <div className="total-num">{TC.fmtHours(total)}</div>
-        <Badge status={status} />
       </div>
     </div>
   );

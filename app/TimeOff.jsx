@@ -123,7 +123,7 @@ function TimeOff() {
             </thead>
             <tbody>
               {leaves.map(l => {
-                const dateLocked = isWeekLocked(state, TC.weekRange(TC.parseDate(l.date), 0).startIso, l.userId);
+                const dateLocked = isDayLocked(state, l.date, l.userId);
                 const typeMeta = l.type === 'pto'
                   ? { label: 'PTO', color: 'var(--trp-orange-700)' }
                   : l.type === 'sick'
@@ -165,7 +165,7 @@ function TimeOff() {
                           Remove
                         </button>
                       )}
-                      {dateLocked && <span className="tiny muted">Week locked</span>}
+                      {dateLocked && <span className="tiny muted">Pay period approved</span>}
                     </td>
                   </tr>
                 );

@@ -15,7 +15,8 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
   const [showOffline, setShowOffline] = useStateSend(false);
   const [confirmCancel, setConfirmCancel] = useStateSend(false);
   const pp = payPeriodForDate(payPeriod.periodStart, state.settings);
-  const todayIso = TC.isoDate(new Date());
+  const today = new Date();
+  const todayIso = TC.isoDate(today);
   const breakdown = payPeriodBreakdown(state, payPeriod.periodStart, payPeriod.userId, todayIso);
   const totals = breakdown;
   const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
@@ -31,8 +32,6 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
     weekday: 'short', month: 'short', day: 'numeric',
   });
 
-  const today = new Date();
-  const todayIso = TC.isoDate(today);
   const daysToDeadline = Math.ceil((TC.parseDate(deadlineIso) - TC.parseDate(todayIso)) / 86400000);
 
   let deadlineCopy, deadlineColor;
@@ -142,9 +141,16 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
         )}
         {isAwaiting && (
           <>
+            <button
+              className="btn ghost"
+              onClick={() => setConfirmCancel(true)}
+              title="Pull this pay period back so you can edit hours on Timesheet"
+            >
+              🔓 Unlock for editing
+            </button>
             <button className="btn ghost" onClick={onSend}>↻ Resend approval link</button>
             <div className="tiny muted" style={{marginLeft: 'auto', alignSelf: 'center', maxWidth: 280, textAlign: 'right'}}>
-              Waiting on Katrina's signature. The receipt link she emails back will auto-record the approval here.
+              Waiting on Katrina's signature. Need to fix hours first? Unlock, edit on Timesheet, then re-send.
             </div>
           </>
         )}
@@ -173,9 +179,9 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
               letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 10,
               textDecoration: 'underline',
             }}
-            title="Pull this pay period back so you can edit or re-send it"
+            title="Pull this pay period back so you can edit on Timesheet"
           >
-            ✕ Cancel approval request
+            🔓 Unlock for editing
           </button>
           <span style={{color: 'var(--border-strong)', fontSize: 10}}>·</span>
           <button
@@ -214,7 +220,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
 
       {confirmCancel && (
         <Modal
-          title="Cancel approval request?"
+          title="Unlock for editing?"
           subtitle={`${pp.label} · ${TC.fmtRange(pp.periodStart, pp.periodEnd)}`}
           onClose={() => setConfirmCancel(false)}
           maxWidth={460}
@@ -223,11 +229,11 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
             <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 4}}>
               This will…
             </strong>
-            Move <strong>{pp.label}</strong> back to draft so you can edit the
-            hours or re-send it. Any approval link Katrina already has will
-            stop working once you re-send a new one. <strong>Nothing is
-            emailed to Katrina</strong> — if she already signed, just wait for
-            her receipt link instead of cancelling.
+            Move <strong>{pp.label}</strong> back to draft so you can edit hours
+            on Timesheet and re-send when ready. Any old approval link Katrina
+            has will stop working once you send a new one.{' '}
+            <strong>Nothing is emailed to Katrina.</strong> If she already
+            signed, wait for her receipt link instead of unlocking.
           </div>
           <div className="modal-actions">
             <button className="btn ghost" onClick={() => setConfirmCancel(false)}>Keep waiting</button>
@@ -239,7 +245,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
                 setConfirmCancel(false);
               }}
             >
-              ✕ Yes, cancel approval request
+              🔓 Yes, unlock for editing
             </button>
           </div>
         </Modal>
