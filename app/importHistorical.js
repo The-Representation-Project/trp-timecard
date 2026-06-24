@@ -6,17 +6,17 @@
   const IMPORT_TAG = 'hist-erika-2026';
 
   const STANDARD = { in: '08:00', out: '16:30', break: 30 };
-  // Jun 9–12: 8:00 AM – 9:00 PM, 30 min lunch → 12.5 hrs paid (×4 = 50)
+  // Jun 2–5 (OT week): 8:00 AM – 9:00 PM, 30 min lunch → 12.5 hrs paid (×4 = 50)
   const LONG_SHIFT = { in: '08:00', out: '21:00', break: 30 };
   // Sat Jun 13: 7:30 AM – 8:00 PM, 30 min lunch → 12 hrs paid
   const JUNE_13_SAT = { in: '07:30', out: '20:00', break: 30 };
 
   // Override specific dates (YYYY-MM-DD → shift template).
   const JUNE_OVERRIDES = {
-    '2026-06-09': LONG_SHIFT,
-    '2026-06-10': LONG_SHIFT,
-    '2026-06-11': LONG_SHIFT,
-    '2026-06-12': LONG_SHIFT,
+    '2026-06-02': LONG_SHIFT,
+    '2026-06-03': LONG_SHIFT,
+    '2026-06-04': LONG_SHIFT,
+    '2026-06-05': LONG_SHIFT,
     '2026-06-13': JUNE_13_SAT,
   };
 
@@ -52,18 +52,7 @@
 
   function buildErikaMayJuneEntries() {
     // May 4 → June 15 (current semi-monthly period). Weekends skipped except Jun 13 (Sat).
-    const entries = dateRangeEntries('2026-05-04', '2026-06-15');
-    // dateRangeEntries skips weekends via isWeekday — add Saturday June 13 explicitly.
-    if (!entries.find(e => e.date === '2026-06-13')) {
-      entries.push({
-        date: '2026-06-13',
-        in: JUNE_13_SAT.in,
-        out: JUNE_13_SAT.out,
-        break: JUNE_13_SAT.break,
-      });
-    }
-    entries.sort((a, b) => a.date.localeCompare(b.date));
-    return entries;
+    return dateRangeEntries('2026-05-04', '2026-06-15');
   }
 
   function summarize(entries) {
@@ -112,6 +101,8 @@
       approverName: 'Katrina Steffek',
       approverTitle: 'Approver',
       importTag: IMPORT_TAG,
+      replaceRangeStart: '2026-05-04',
+      replaceRangeEnd: '2026-06-15',
     });
 
     return summary;

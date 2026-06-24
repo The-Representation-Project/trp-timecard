@@ -205,10 +205,18 @@ function leavesForWeek(state, weekStartIso, userId) {
 function weekSubmission(state, weekStartIso, userId) {
   return state.weekSubmissions.find(w => w.weekStart === weekStartIso && w.userId === userId);
 }
+
+// Lock editing only after Katrina has signed off the whole pay period —
+// not when a week is "submitted" or when the period is merely sent.
+function isDayLocked(state, dateIso, userId) {
+  const pp = payPeriodForDate(dateIso, state.settings);
+  const rec = payPeriodRecord(state, pp.periodStart, userId);
+  return !!(rec && rec.status === 'approved');
+}
+
 function isWeekLocked(state, weekStartIso, userId) {
-  const w = weekSubmission(state, weekStartIso, userId);
-  if (!w) return false;
-  return w.status === 'submitted' || w.status === 'approved';
+  const days = window.TC.weekDays(weekStartIso);
+  return days.length > 0 && days.every(d => isDayLocked(state, d, userId));
 }
 
 // ----- Pay period helpers -------------------------------------------------
@@ -329,21 +337,11 @@ function payPeriodBreakdown(state, periodStartIso, userId, todayIso) {
   return { ...totals, assumed, confirmed };
 }
 
-// A pay period is "ready to send" once every week containing logged data
-// inside the period has been submitted (status=submitted OR approved).
+// A pay period is ready once it has logged hours and isn't already signed off.
 function payPeriodReady(state, periodStartIso, userId) {
-  const pp = payPeriodForDate(periodStartIso, state.settings);
-  const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
-  let any = false;
-  for (const ws of weekStarts) {
-    const t = weekTotals(state, ws, userId);
-    if (t.total === 0) continue;
-    const w = weekSubmission(state, ws, userId);
-    if (!w) return false;
-    if (w.status !== 'submitted' && w.status !== 'approved') return false;
-    any = true;
-  }
-  return any;
+  const rec = payPeriodRecord(state, periodStartIso, userId);
+  if (rec && (rec.status === 'approved' || rec.status === 'awaiting_approval')) return false;
+  return payPeriodTotals(state, periodStartIso, userId).total > 0;
 }
 
 function weekTotals(state, weekStartIso, userId, now = Date.now()) {
@@ -523,9 +521,9 @@ function makeActions(update) {
         if (s.activeClock && s.activeClock.userId === userId) return s;
         const now = new Date();
         const dateIso = window.TC.isoDate(now);
+        if (isDayLocked(s, dateIso, userId)) return s;
         const weekId = window.TC.weekRange(now, 0).startIso;
         const wk = s.weekSubmissions.find(w => w.weekStart === weekId && w.userId === userId);
-        if (wk && (wk.status === 'submitted' || wk.status === 'approved')) return s;
         const entry = {
           id: 't-' + window.TC.uid(),
           userId, date: dateIso,
@@ -917,13 +915,25 @@ function makeActions(update) {
       approverName,
       approverTitle,
       importTag = 'hist-v1',
+      replaceRangeStart = null,
+      replaceRangeEnd = null,
     }) {
       update(s => {
         const TC = window.TC;
         const emp = s.users.find(u => u.id === userId);
         if (!emp) return s;
 
-        let timeEntries = s.timeEntries.filter(e => e.importTag !== importTag);
+        // Drop prior import rows AND any other sessions in the backfill date
+        // range so clock-in tests don't double up with imported days.
+        let timeEntries = s.timeEntries.filter(e => {
+          if (e.userId !== userId) return true;
+          if (e.importTag === importTag) return false;
+          if (replaceRangeStart && replaceRangeEnd
+              && e.date >= replaceRangeStart && e.date <= replaceRangeEnd) {
+            return false;
+          }
+          return true;
+        });
         const newEntries = entries.map(e => {
           const weekId = TC.weekRange(TC.parseDate(e.date), 0).startIso;
           return {
@@ -998,7 +1008,18 @@ function makeActions(update) {
           sickBalance: sickBalance != null ? Number(sickBalance) : u.sickBalance,
         });
 
-        return { ...s, users, timeEntries, weekSubmissions, payPeriods };
+        // Clear a stuck open clock if it pointed at a removed entry.
+        let activeClock = s.activeClock;
+        let activeLunch = s.activeLunch;
+        if (activeClock && activeClock.userId === userId) {
+          const still = timeEntries.find(e => e.id === activeClock.entryId);
+          if (!still) activeClock = null;
+        }
+        if (activeLunch && activeLunch.userId === userId && !activeClock) {
+          activeLunch = null;
+        }
+
+        return { ...s, users, timeEntries, weekSubmissions, payPeriods, activeClock, activeLunch };
       });
     },
 
@@ -1020,7 +1041,7 @@ function makeActions(update) {
 Object.assign(window, {
   StoreContext, StoreProvider, useStore,
   currentUser, employee, director,
-  entriesForWeek, leavesForWeek, weekSubmission, isWeekLocked, weekTotals,
+  entriesForWeek, leavesForWeek, weekSubmission, isDayLocked, isWeekLocked, weekTotals,
   payPeriodForDate, payPeriodRecord, payPeriodWeeks, payPeriodWeekStarts,
   payPeriodReady, payPeriodTotals, payPeriodAssumptionHours, payPeriodBreakdown,
   payPeriodSubmitDeadline,

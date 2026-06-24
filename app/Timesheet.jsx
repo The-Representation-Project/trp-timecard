@@ -16,7 +16,8 @@ function Timesheet() {
   const days = TC.weekDays(weekStart);
   const totals = weekTotals(state, weekStart, user.id, now);
   const submission = weekSubmission(state, weekStart, user.id);
-  const locked = isWeekLocked(state, weekStart, user.id);
+  const anyEditable = days.some(d => !isDayLocked(state, d, user.id));
+  const allLocked = days.every(d => isDayLocked(state, d, user.id));
 
   const todayIso = TC.isoDate(new Date(now));
   const todayWeekStart = TC.weekRange(new Date(now), 0).startIso;
@@ -50,7 +51,7 @@ function Timesheet() {
         )}
       </div>
 
-      <WeekStatusBanner totals={totals} submission={submission} />
+      <WeekStatusBanner totals={totals} state={state} userId={user.id} weekStart={weekStart} />
 
       {submission && submission.directorComment && submission.status === 'approved' && (
         <div className="comment-block">
@@ -71,7 +72,7 @@ function Timesheet() {
               <th style={{textAlign: 'right'}}>Holiday</th>
               <th style={{textAlign: 'right'}}>LWOP</th>
               <th style={{textAlign: 'right'}}>Total</th>
-              {!locked && <th></th>}
+              {anyEditable && <th></th>}
             </tr>
           </thead>
           <tbody>
@@ -81,19 +82,21 @@ function Timesheet() {
               const lv = leaveForDay(d);
               const isToday = d === todayIso;
               const isFuture = d > todayIso;
+              const dayLocked = isDayLocked(state, d, user.id);
               return (
                 <tr key={d} className={isToday ? 'today' : ''} style={isFuture ? {opacity: 0.7} : undefined}>
                   <td className="day">
                     {TC.fmtDayShort(d)}
                     {isToday && <div className="tiny muted" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2}}>Today</div>}
                     {isFuture && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-orange-700)'}}>Upcoming</div>}
+                    {dayLocked && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-pacific-700)'}}>Approved · locked</div>}
                   </td>
                   <td>
                     {ents.length === 0 && lv.length === 0 && (
                       <span className="muted tiny">No sessions</span>
                     )}
                     {ents.map(e => (
-                      <SessionRow key={e.id} entry={e} now={now} locked={locked} onEdit={() => setEditing(e.id)} onDelete={() => actions.deleteEntry(e.id)} />
+                      <SessionRow key={e.id} entry={e} now={now} locked={dayLocked} onEdit={() => setEditing(e.id)} onDelete={() => actions.deleteEntry(e.id)} />
                     ))}
                     {lv.map(l => {
                       const meta = l.type === 'pto'
@@ -120,7 +123,7 @@ function Timesheet() {
                   <td className="hrs" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.holiday)}</td>
                   <td className="hrs" style={{textAlign: 'right', color: dayTotal.lwop ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(dayTotal.lwop || 0)}</td>
                   <td className="hrs total" style={{textAlign: 'right'}}>{TC.fmtHours(dayTotal.total)}</td>
-                  {!locked && (
+                  {!dayLocked && (
                     <td style={{textAlign: 'right'}}>
                       <button className="btn ghost small" onClick={() => setEditing({ new: d })}>+ Add</button>
                     </td>
@@ -139,13 +142,13 @@ function Timesheet() {
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.holidayTotal)}</td>
               <td className="tnum" style={{textAlign: 'right', color: totals.lwopTotal ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(totals.lwopTotal || 0)}</td>
               <td className="tnum total-val" style={{textAlign: 'right'}}>{TC.fmtHours(totals.total)}</td>
-              {!locked && <td></td>}
+              {anyEditable && <td></td>}
             </tr>
           </tfoot>
         </table>
       </div>
 
-      {!locked && hasUpcomingDays && (
+      {anyEditable && hasUpcomingDays && (
         <div className="comment-block" style={{marginTop: 16, borderLeftColor: 'var(--trp-orange)'}}>
           <span className="from" style={{color: 'var(--trp-orange-700)'}}>Submitting the pay period early?</span>
           If you'll need to send the pay period to Katrina before the week is
@@ -155,19 +158,19 @@ function Timesheet() {
         </div>
       )}
 
-      {!locked && (
+      {anyEditable && (
         <div className="comment-block" style={{marginTop: 12, borderLeftColor: 'var(--trp-coral)'}}>
           <span className="from" style={{color: 'var(--trp-coral-700)'}}>Ready to send?</span>
           When this pay period is ready for Katrina's approval, head to the{' '}
           <strong>Home</strong> tab — the <em>Submit Pay Period for Approval</em>{' '}
-          card there sends everything in one step.
+          card there sends the whole period in one step (not week by week).
         </div>
       )}
 
-      {locked && (
+      {allLocked && (
         <div className="comment-block" style={{marginTop: 16}}>
           <span className="from">Locked</span>
-          This week is {submission && submission.status === 'submitted' ? 'awaiting Katrina\'s approval' : 'approved and locked'}.
+          Every day this week is in a pay period Katrina has already signed off on.
         </div>
       )}
 

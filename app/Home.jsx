@@ -29,8 +29,8 @@ function ClockCard({ user, onManualAdd }) {
   });
   const clockLabel = today.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
-  const weekStart = TC.weekRange(today, 0).startIso;
-  const locked = isWeekLocked(state, weekStart, user.id);
+  const todayIso = TC.isoDate(today);
+  const locked = isDayLocked(state, todayIso, user.id);
 
   let elapsed = 0;
   if (active && activeEntry) elapsed = now - new Date(activeEntry.clockIn).getTime();
@@ -52,7 +52,7 @@ function ClockCard({ user, onManualAdd }) {
   let statusLabel;
   if (onLunch) statusLabel = 'You are on lunch';
   else if (active) statusLabel = 'You are clocked in';
-  else if (locked) statusLabel = 'This week is locked';
+  else if (locked) statusLabel = 'This pay period is approved and locked';
   else statusLabel = 'Ready to clock in';
 
   let timerMs, timerSubLabel;
@@ -121,8 +121,8 @@ function ClockCard({ user, onManualAdd }) {
             <div className="tnum" style={{fontSize: 16, color: 'white'}}>{TC.fmtTime(activeEntry.clockIn)}</div>
           </div>
         )}
-        {!active && !onLunch && (
-          <Badge live={false} status={'submitted'}>{locked ? 'Week locked' : 'Idle'}</Badge>
+          {!active && !onLunch && (
+          <Badge live={false} status={'submitted'}>{locked ? 'Period locked' : 'Idle'}</Badge>
         )}
         {active && !onLunch && <Badge live />}
         {onLunch && (
@@ -246,6 +246,12 @@ function Home() {
 
       {staleActiveEntry && (
         <StaleClockBanner entry={staleActiveEntry} onEdit={() => setManualEditing(staleActiveEntry.id)} />
+      )}
+
+      {awaitingPP && (
+        <div style={{marginBottom: 24}}>
+          <UnlockPeriodBanner payPeriod={awaitingPP} />
+        </div>
       )}
 
       {recentApprovedPP && (
@@ -401,6 +407,66 @@ function WeekStatusMini({ totals, submission }) {
 }
 
 Object.assign(window, { Home });
+
+function UnlockPeriodBanner({ payPeriod }) {
+  const { state, actions } = useStore();
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const pp = payPeriodForDate(payPeriod.periodStart, state.settings);
+  const sentLabel = payPeriod.sentToApproverAt
+    ? new Date(payPeriod.sentToApproverAt).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      })
+    : null;
+
+  return (
+    <>
+      <div style={{
+        padding: '16px 18px',
+        background: 'linear-gradient(135deg, var(--trp-orange-100) 0%, white 100%)',
+        border: '1px solid var(--trp-orange)',
+        borderLeft: '6px solid var(--trp-orange)',
+        borderRadius: 'var(--radius-md)',
+        display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap',
+      }}>
+        <div style={{flex: '1 1 280px', minWidth: 0}}>
+          <div style={{
+            fontFamily: 'var(--font-display)', textTransform: 'uppercase',
+            letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700,
+            color: 'var(--trp-orange-700)', marginBottom: 4,
+          }}>
+            {pp.label} sent to Katrina
+          </div>
+          <div style={{fontWeight: 700, color: 'var(--trp-navy)', fontSize: 15, lineHeight: 1.35}}>
+            Need to fix hours before she signs? Unlock this pay period, edit day by day on Timesheet, then re-send.
+          </div>
+          {sentLabel && (
+            <div className="tiny muted" style={{marginTop: 6}}>Sent {sentLabel}</div>
+          )}
+        </div>
+        <button
+          className="btn"
+          style={{background: 'var(--trp-orange)', color: 'var(--trp-navy)', flexShrink: 0}}
+          onClick={() => setConfirmOpen(true)}
+        >
+          🔓 Unlock for editing
+        </button>
+      </div>
+
+      <Confirm
+        open={confirmOpen}
+        title="Unlock for editing?"
+        message={`Move ${pp.label} (${TC.fmtRange(pp.periodStart, pp.periodEnd)}) back to draft so you can edit on Timesheet. Nothing is emailed to Katrina. If she already signed, wait for her receipt link instead.`}
+        confirmLabel="Yes, unlock for editing"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          actions.cancelPayPeriodSend(payPeriod.periodStart, payPeriod.userId);
+          setConfirmOpen(false);
+        }}
+      />
+    </>
+  );
+}
 
 function StaleClockBanner({ entry, onEdit }) {
   const { actions } = useStore();
