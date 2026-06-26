@@ -87,6 +87,15 @@ function DecisionModal({ open, decision, onCancel, onConfirm, title }) {
   );
 }
 
+function confirmLockedEdit(state, dateIso, userId) {
+  if (!isDayLocked(state, dateIso, userId)) return true;
+  const msg = dayLockMessage(state, dateIso, userId);
+  return window.confirm(
+    (msg || 'This pay period is locked for payroll.') +
+    '\n\nUnlock for editing anyway? Use only if a correction is needed.'
+  );
+}
+
 function Confirm({ open, title, message, confirmLabel = 'Confirm', danger, onCancel, onConfirm }) {
   if (!open) return null;
   return (
@@ -113,7 +122,7 @@ function WeekStatusBanner({ totals, state, userId, weekStart }) {
   const rec = payPeriodRecord(state, pp.periodStart, userId);
   let note = 'Edit any day below · send the whole pay period from Home when ready';
   if (rec && rec.status === 'approved' && rec.signedViaReceipt) {
-    note = `${pp.label} signed by Katrina · this pay period is locked`;
+    note = `${pp.label} signed by Katrina · locked for payroll (editable with override)`;
   } else if (rec && rec.status === 'awaiting_approval') {
     note = `${pp.label} with Katrina · fully editable until she signs`;
   }
@@ -199,4 +208,4 @@ function PayPeriodTotalsSummary({ totals, todayIso, periodEnd, variant = 'full',
   );
 }
 
-Object.assign(window, { Badge, Modal, DecisionModal, Confirm, WeekStatusBanner, PayPeriodTotalsSummary });
+Object.assign(window, { Badge, Modal, DecisionModal, Confirm, confirmLockedEdit, WeekStatusBanner, PayPeriodTotalsSummary });

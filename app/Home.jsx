@@ -30,7 +30,7 @@ function ClockCard({ user, onManualAdd }) {
   const clockLabel = today.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
   const todayIso = TC.isoDate(today);
-  const locked = isDayLocked(state, todayIso, user.id);
+  const locked = isDaySoftLocked(state, todayIso, user.id);
 
   let elapsed = 0;
   if (active && activeEntry) elapsed = now - new Date(activeEntry.clockIn).getTime();
@@ -45,14 +45,28 @@ function ClockCard({ user, onManualAdd }) {
     if (active) { btnLabel = 'Clock Out'; btnAction = () => actions.clockOut(user.id); btnClass = 'out'; }
     else { btnLabel = 'Clock In'; btnAction = () => actions.clockIn(user.id); }
   }
-  if (locked) btnDisabled = true;
+  if (locked && !active && !onLunch) btnDisabled = false; // allow click → confirm override
+  else if (locked) btnDisabled = true;
 
-  function handleClick() { if (!btnDisabled && btnAction) btnAction(); }
+  function handleClick() {
+    if (btnDisabled && locked && btnAction) {
+      if (confirmLockedEdit(state, todayIso, user.id)) {
+        actions.clockIn(user.id, { force: true });
+      }
+      return;
+    }
+    if (!btnDisabled && btnAction) btnAction();
+  }
+
+  function handleManualAdd() {
+    if (locked && !confirmLockedEdit(state, todayIso, user.id)) return;
+    onManualAdd();
+  }
 
   let statusLabel;
   if (onLunch) statusLabel = 'You are on lunch';
   else if (active) statusLabel = 'You are clocked in';
-  else if (locked) statusLabel = 'This pay period was signed by Katrina — locked';
+  else if (locked) statusLabel = 'This pay period was signed — locked for payroll';
   else statusLabel = 'Ready to clock in';
 
   let timerMs, timerSubLabel;
@@ -131,13 +145,13 @@ function ClockCard({ user, onManualAdd }) {
           </span>
         )}
         <button
-          className="btn ghost" onClick={onManualAdd} disabled={locked}
+          className="btn ghost" onClick={handleManualAdd}
           style={{
             color: 'var(--trp-pacific-300)', marginLeft: 'auto',
             border: '1px solid rgba(255,255,255,0.18)',
             background: 'rgba(255,255,255,0.04)',
           }}
-          title="Add a session manually if you forgot to clock in or out"
+          title={locked ? 'Period locked — click to override if correction needed' : 'Add a session manually if you forgot to clock in or out'}
         >
           ✎ Forgot to Clock In/Out?
         </button>
@@ -155,15 +169,18 @@ function Home() {
 
   const today = new Date(now);
   const todayIso = TC.isoDate(today);
+  const currentPP = payPeriodForDate(todayIso, state.settings);
+  const currentPPRec = payPeriodRecord(state, currentPP.periodStart, user.id);
+  const currentPPTotals = payPeriodTotals(state, currentPP.periodStart, user.id);
   const weekStart = TC.weekRange(today, 0).startIso;
   const week = weekTotals(state, weekStart, user.id, now);
   const todayEntries = state.timeEntries.filter(e => e.userId === user.id && e.date === todayIso);
   const todayHours = todayEntries.reduce((a, e) => a + TC.entryHours(e, now), 0);
   const todayLeave = state.leaveEntries.filter(l => l.userId === user.id && l.date === todayIso);
   const todayLeaveHours = todayLeave.reduce((a, l) => a + l.hours, 0);
-  const submission = weekSubmission(state, weekStart, user.id);
 
-  // Most recently approved pay period
+  // Only surface pay periods that still need approval — never re-show
+  // hours from periods Katrina already signed off.
   const recentApprovedPP = [...state.payPeriods]
     .filter(p => p.userId === user.id && p.status === 'approved' && p.signedViaReceipt && p.decidedAt)
     .sort((a, b) => (b.decidedAt || '').localeCompare(a.decidedAt || ''))[0];
@@ -327,7 +344,11 @@ function Home() {
           <div className="value">{TC.fmtHours(user.sickBalance)}<span style={{fontSize: 16, marginLeft: 4, opacity: 0.5}}>hrs</span></div>
           <div className="sub">≈ {(user.sickBalance / 8).toFixed(1)} days</div>
         </div>
-        <WeekStatusMini totals={week} submission={submission} />
+        <PayPeriodStatusMini
+          payPeriod={currentPP}
+          totals={currentPPTotals}
+          record={currentPPRec}
+        />
       </div>
 
       {manualEditing && (
@@ -390,19 +411,31 @@ function Home() {
   );
 }
 
-function WeekStatusMini({ totals, submission }) {
-  const t = totals.total;
-  let cls = '', label = `${TC.fmtHours(40 - t)} to go`;
-  if (t === 40) { cls = ''; label = 'On target'; }
-  else if (t > 40) { cls = 'orange'; label = `${TC.fmtHours(t - 40)} over 40`; }
-  const status = submission ? submission.status : 'draft';
+function PayPeriodStatusMini({ payPeriod, totals, record }) {
+  let status = 'draft';
+  let label = 'Current pay period';
+  if (record) {
+    if (record.status === 'approved' && record.signedViaReceipt) {
+      status = 'approved';
+      label = 'Signed off · locked';
+    } else if (record.status === 'awaiting_approval') {
+      status = 'submitted';
+      label = 'With Katrina for approval';
+    } else if (record.status === 'approved') {
+      status = 'approved';
+      label = 'Approved (offline)';
+    }
+  }
   return (
-    <div className={`stat ${cls}`}>
-      <div className="eyebrow">Week status</div>
+    <div className="stat cream">
+      <div className="eyebrow">{payPeriod.label} · {label}</div>
       <div className="value" style={{fontSize: 22, marginTop: 6, marginBottom: 8}}>
         <Badge status={status} />
       </div>
-      <div className="sub">{label}</div>
+      <div className="sub">
+        {TC.fmtHours(totals.total)} hrs this period
+        {totals.total > 0 && ` · ${TC.fmtHours(totals.work)} worked`}
+      </div>
     </div>
   );
 }

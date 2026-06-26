@@ -398,22 +398,26 @@ function ApprovalSignedPage({ payload, signature }) {
     hour: 'numeric', minute: '2-digit',
   });
 
-  // Pre-built emails back to Erika — Gmail compose URL (opens Gmail tab)
-  // plus a plain mailto: fallback.
+  const payrollEmail = 'jesse@faithfearfinance.com';
   const subject = `Approved: ${payload.employee.name} timecard · ${payload.pp.label}`;
   const body =
     `Hi ${payload.employee.name.split(/\s+|-/)[0]},\n\n` +
     `Approved ${payload.pp.label} (${TC.fmtRange(payload.pp.periodStart, payload.pp.periodEnd)}) — ${TC.fmtHours(signature.totalHours)} hrs.\n\n` +
     `Click the link below to record the approval in your Timecard app:\n\n${receiptLink}\n\n` +
-    `The signed PDF for payroll opened in a separate window — save it as PDF and forward to payroll.\n\n` +
+    `The signed PDF for payroll opened in a separate window — save it as PDF. Jesse Barber (payroll) is CC'd on this email for payroll records.\n\n` +
     `${signature.signedName}\n${signature.signedTitle}`;
-  const gmailErika = 'https://mail.google.com/mail/?view=cm&fs=1' +
-    `&to=${encodeURIComponent(payload.employee.email)}` +
-    `&su=${encodeURIComponent(subject)}` +
-    `&body=${encodeURIComponent(body)}`;
-  const mailtoErika = `mailto:${encodeURIComponent(payload.employee.email)}` +
-    `?subject=${encodeURIComponent(subject)}` +
-    `&body=${encodeURIComponent(body)}`;
+  const gmailErika = buildGmailComposeUrl({
+    to: payload.employee.email,
+    cc: payrollEmail,
+    subject,
+    body,
+  });
+  const mailtoErika = buildMailtoUrl({
+    to: payload.employee.email,
+    cc: payrollEmail,
+    subject,
+    body,
+  });
 
   return (
     <div className="page approval-page">
@@ -448,8 +452,8 @@ function ApprovalSignedPage({ payload, signature }) {
         <NextStepCard
           num="1"
           color="coral"
-          title="Email approval back to Erika (Gmail)"
-          desc="Opens Gmail with the message + one-click approval link already filled in. Just hit Send."
+          title="Email approval to Erika (CC Jesse / payroll)"
+          desc="Opens Gmail with the approval link for Erika and Jesse Barber (jesse@faithfearfinance.com) CC'd for payroll records. Just hit Send."
           cta="Open Gmail"
           href={gmailErika}
           target="_blank"
@@ -457,8 +461,8 @@ function ApprovalSignedPage({ payload, signature }) {
         <NextStepCard
           num="2"
           color="pacific"
-          title="Forward the signed PDF to payroll"
-          desc="The PDF opened in a print dialog. Save it (Save as PDF), then attach to payroll's email."
+          title="Save the signed PDF"
+          desc="The PDF opened in a print dialog. Save it (Save as PDF) — Jesse is CC'd on the email so payroll has a copy."
           cta="Re-open PDF"
           onClick={() => window.printApprovalPDF(payload, signature)}
         />

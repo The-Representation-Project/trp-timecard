@@ -18,6 +18,7 @@ function Timesheet() {
   const submission = weekSubmission(state, weekStart, user.id);
   const anyEditable = days.some(d => !isDayLocked(state, d, user.id));
   const allLocked = days.every(d => isDayLocked(state, d, user.id));
+  const showActions = anyEditable || allLocked;
 
   const todayIso = TC.isoDate(new Date(now));
   const todayWeekStart = TC.weekRange(new Date(now), 0).startIso;
@@ -72,7 +73,7 @@ function Timesheet() {
               <th style={{textAlign: 'right'}}>Holiday</th>
               <th style={{textAlign: 'right'}}>LWOP</th>
               <th style={{textAlign: 'right'}}>Total</th>
-              {anyEditable && <th></th>}
+              {showActions && <th></th>}
             </tr>
           </thead>
           <tbody>
@@ -89,14 +90,27 @@ function Timesheet() {
                     {TC.fmtDayShort(d)}
                     {isToday && <div className="tiny muted" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2}}>Today</div>}
                     {isFuture && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-orange-700)'}}>Upcoming</div>}
-                    {dayLocked && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-pacific-700)'}}>Katrina signed · locked</div>}
+                    {dayLocked && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-pacific-700)'}}>Signed · locked (editable)</div>}
                   </td>
                   <td>
                     {ents.length === 0 && lv.length === 0 && (
                       <span className="muted tiny">No sessions</span>
                     )}
                     {ents.map(e => (
-                      <SessionRow key={e.id} entry={e} now={now} locked={dayLocked} onEdit={() => setEditing(e.id)} onDelete={() => actions.deleteEntry(e.id)} />
+                      <SessionRow
+                        key={e.id}
+                        entry={e}
+                        now={now}
+                        locked={dayLocked}
+                        onEdit={() => {
+                          if (dayLocked && !confirmLockedEdit(state, d, user.id)) return;
+                          setEditing(e.id);
+                        }}
+                        onDelete={() => {
+                          if (dayLocked && !confirmLockedEdit(state, d, user.id)) return;
+                          actions.deleteEntry(e.id, { force: true });
+                        }}
+                      />
                     ))}
                     {lv.map(l => {
                       const meta = l.type === 'pto'
@@ -128,6 +142,19 @@ function Timesheet() {
                       <button className="btn ghost small" onClick={() => setEditing({ new: d })}>+ Add</button>
                     </td>
                   )}
+                  {dayLocked && (
+                    <td style={{textAlign: 'right'}}>
+                      <button
+                        className="btn ghost small"
+                        onClick={() => {
+                          if (confirmLockedEdit(state, d, user.id)) setEditing({ new: d });
+                        }}
+                        title="Period locked — override if correction needed"
+                      >
+                        ✎ Override
+                      </button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -142,7 +169,7 @@ function Timesheet() {
               <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.holidayTotal)}</td>
               <td className="tnum" style={{textAlign: 'right', color: totals.lwopTotal ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(totals.lwopTotal || 0)}</td>
               <td className="tnum total-val" style={{textAlign: 'right'}}>{TC.fmtHours(totals.total)}</td>
-              {anyEditable && <td></td>}
+              {showActions && <td></td>}
             </tr>
           </tfoot>
         </table>
@@ -169,11 +196,11 @@ function Timesheet() {
 
       {allLocked && (
         <div className="comment-block" style={{marginTop: 16}}>
-          <span className="from">Locked</span>
+          <span className="from">Locked for payroll</span>
           Katrina signed off this pay period ({TC.fmtRange(
             payPeriodForDate(days[0], state.settings).periodStart,
             payPeriodForDate(days[0], state.settings).periodEnd
-          )}). Edits are locked until payroll needs a correction.
+          )}). Hours are locked but you can still override individual days if a correction is needed.
         </div>
       )}
 
@@ -221,6 +248,11 @@ function SessionRow({ entry, now, locked, onEdit, onDelete }) {
           <button className="btn ghost small" onClick={onDelete} style={{color: 'var(--trp-coral-700)'}}>Delete</button>
         </>
       )}
+      {locked && (
+        <>
+          <button className="btn ghost small" onClick={onEdit} title="Period locked — override if needed">✎ Edit</button>
+        </>
+      )}
     </div>
   );
 }
@@ -229,6 +261,7 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
   const { state, actions } = useStore();
   const existing = entryId ? state.timeEntries.find(e => e.id === entryId) : null;
   const [date, setDate] = useStateTS(existing ? existing.date : newDate);
+  const [forceEdit, setForceEdit] = useStateTS(false);
   // For NEW sessions, leave fields blank — the user fills in only what
   // actually happened. (No auto-9-to-5 with a 30-min break.) For
   // existing entries, prefill with whatever's already saved.
@@ -241,11 +274,15 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
   });
 
   function save() {
-    if (date && isDayLocked(state, date, userId)) {
-      const msg = dayLockMessage(state, date, userId);
-      alert(msg || 'This day is locked because Katrina approved the pay period.');
-      return;
+    const effectiveDate = date;
+    const locked = effectiveDate && isDayLocked(state, effectiveDate, userId);
+    let useForce = forceEdit;
+    if (locked && !useForce) {
+      if (!confirmLockedEdit(state, effectiveDate, userId)) return;
+      useForce = true;
+      setForceEdit(true);
     }
+    if (effectiveDate && locked && !useForce) return;
     // For NEW entries, clock-in is required (we have no fallback).
     // For EXISTING entries, fall back to whatever's already saved if a
     // field is blank — so the user can edit just the clock-out (or just
@@ -269,7 +306,7 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
         clockOut: clockOutIso,
         breakMinutes: breakNum,
         estimated: !!estimated,
-      });
+      }, { force: useForce });
     } else {
       actions.addManualEntry(userId, {
         date,
@@ -277,7 +314,7 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
         clockOut: clockOut || null,
         breakMinutes: breakNum,
         estimated: !!estimated,
-      });
+      }, { force: useForce });
     }
     onClose();
   }

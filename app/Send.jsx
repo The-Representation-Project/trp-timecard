@@ -19,10 +19,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
   const todayIso = TC.isoDate(today);
   const breakdown = payPeriodBreakdown(state, payPeriod.periodStart, payPeriod.userId, todayIso);
   const totals = breakdown;
-  const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
-  const childWeeks = weekStarts
-    .map(ws => ({ ws, sub: weekSubmission(state, ws, payPeriod.userId), tot: weekTotals(state, ws, payPeriod.userId) }))
-    .filter(x => x.tot.total > 0);
+  const dayRows = payPeriodDayRows(state, payPeriod.periodStart, payPeriod.userId);
 
   const payDateLabel = TC.parseDate(pp.payDate).toLocaleDateString(undefined, {
     weekday: 'short', month: 'short', day: 'numeric',
@@ -104,7 +101,7 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
       <table className="mini-table">
         <thead>
           <tr>
-            <th>Week</th>
+            <th>Day</th>
             <th style={{textAlign: 'right'}}>Clocked</th>
             <th style={{textAlign: 'right'}}>PTO</th>
             <th style={{textAlign: 'right'}}>Sick</th>
@@ -114,27 +111,47 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
           </tr>
         </thead>
         <tbody>
-          {childWeeks.map(({ ws, tot }) => (
-            <tr key={ws}>
+          {dayRows.map(d => (
+            <tr key={d.dateIso}>
               <td style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 11, color: 'var(--trp-navy)'}}>
-                {TC.fmtRange(ws, TC.weekDays(ws)[6])}
+                {TC.fmtDayShort(d.dateIso)}
               </td>
-              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.workTotal)}</td>
-              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.ptoTotal)}</td>
-              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.sickTotal)}</td>
-              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.holidayTotal || 0)}</td>
-              <td className="tnum" style={{textAlign: 'right', color: (tot.lwopTotal || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(tot.lwopTotal || 0)}</td>
-              <td className="tnum" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(tot.total)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.work)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.pto)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.sick)}</td>
+              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.holiday || 0)}</td>
+              <td className="tnum" style={{textAlign: 'right', color: (d.lwop || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(d.lwop || 0)}</td>
+              <td className="tnum" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(d.total)}</td>
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr>
+            <td style={{fontWeight: 700, color: 'var(--trp-navy)'}}>Pay period total</td>
+            <td className="tnum" style={{textAlign: 'right', fontWeight: 700}}>{TC.fmtHours(totals.work)}</td>
+            <td className="tnum" style={{textAlign: 'right', fontWeight: 700}}>{TC.fmtHours(totals.pto)}</td>
+            <td className="tnum" style={{textAlign: 'right', fontWeight: 700}}>{TC.fmtHours(totals.sick)}</td>
+            <td className="tnum" style={{textAlign: 'right', fontWeight: 700}}>{TC.fmtHours(totals.holiday || 0)}</td>
+            <td className="tnum" style={{textAlign: 'right', fontWeight: 700, color: (totals.lwop || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(totals.lwop || 0)}</td>
+            <td className="tnum" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>{TC.fmtHours(totals.total)}</td>
+          </tr>
+        </tfoot>
       </table>
 
       <div className="actions">
         {!isAwaiting && (
-          <button className="btn" style={{background: 'var(--trp-coral)'}} onClick={onSend}>
-            ✉ Submit Pay Period for Approval
-          </button>
+          <>
+            <button className="btn" style={{background: 'var(--trp-coral)'}} onClick={onSend}>
+              ✉ Submit Pay Period for Approval
+            </button>
+            <button
+              className="btn ghost"
+              onClick={() => window.downloadPayPeriodExcel(state, payPeriod)}
+              title="Download branded Excel timecard for this pay period"
+            >
+              ↓ Download Excel
+            </button>
+          </>
         )}
         {isAwaiting && (
           <>
@@ -354,17 +371,6 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
 
   const link = approvalRequestUrl(state, periodStartIso);
 
-  // Gmail compose URL — opens Gmail in a new tab with subject/body
-  // prefilled. We use this instead of mailto: because Erika lives in
-  // Gmail and a raw mailto: link won't trigger the Gmail tab unless the
-  // browser is specifically configured (most aren't).
-  function gmailComposeUrl(to, subject, body) {
-    return 'https://mail.google.com/mail/?view=cm&fs=1' +
-      `&to=${encodeURIComponent(to)}` +
-      `&su=${encodeURIComponent(subject)}` +
-      `&body=${encodeURIComponent(body)}`;
-  }
-
   const deadlineIso = payPeriodSubmitDeadline(pp.periodStart, state.settings);
   const deadlineLabel = TC.parseDate(deadlineIso).toLocaleDateString(undefined, {
     weekday: 'long', month: 'long', day: 'numeric',
@@ -391,10 +397,8 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
     `${link}\n\n` +
     `Thanks,\n${emp.name}`;
 
-  const mailto = `mailto:${encodeURIComponent(appr.email)}` +
-    `?subject=${encodeURIComponent(subject)}` +
-    `&body=${encodeURIComponent(body)}`;
-  const gmailUrl = gmailComposeUrl(appr.email, subject, body);
+  const gmailUrl = buildGmailComposeUrl({ to: appr.email, subject, body });
+  const mailto = buildMailtoUrl({ to: appr.email, subject, body });
 
   function copyLink() {
     navigator.clipboard.writeText(link).then(() => {

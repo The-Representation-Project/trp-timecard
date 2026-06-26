@@ -32,6 +32,15 @@ const APPROVER = {
   title: 'Approver',
 };
 
+// Payroll contact — CC'd on approval emails so Jesse keeps a copy.
+const PAYROLL = {
+  id: 'u-payroll',
+  name: 'Jesse Barber',
+  email: 'jesse@faithfearfinance.com',
+  role: 'payroll',
+  title: 'Payroll',
+};
+
 // Accrual rates per hour worked. Defaults match 2 weeks PTO / yr +
 // CA-standard 1-hr-sick-per-30-worked. Editable in the Time Off page.
 const DEFAULT_PTO_ACCRUAL_PER_HOUR = 0.0385;   // ≈ 80 hrs / 2080 work-hours
@@ -41,7 +50,7 @@ const DEFAULT_SICK_ACCRUAL_PER_HOUR = 1 / 30;  // 1 sick hr per 30 hrs worked
 
 function emptyState() {
   return {
-    users: [EMPLOYEE, APPROVER],
+    users: [EMPLOYEE, APPROVER, PAYROLL],
     timeEntries: [],
     leaveEntries: [],
     weekSubmissions: [],
@@ -193,6 +202,7 @@ function currentUser(state) {
 }
 function employee(state) { return state.users.find(u => u.role === 'employee'); }
 function director(state) { return state.users.find(u => u.role === 'director'); }
+function payroll(state) { return state.users.find(u => u.role === 'payroll'); }
 
 function entriesForWeek(state, weekStartIso, userId) {
   const days = window.TC.weekDays(weekStartIso);
@@ -208,18 +218,23 @@ function weekSubmission(state, weekStartIso, userId) {
 
 // Lock a semi-monthly pay period (1–15 or 16–end) ONLY after Katrina signs
 // via the receipt link. Sent-for-approval, submitted weeks, and offline
-// backfill records never lock editing.
+// backfill records never lock editing. Locked periods are visually locked
+// but remain editable with an explicit override (see forceUnlock in actions).
 function isDayLocked(state, dateIso, userId) {
   const pp = payPeriodForDate(dateIso, state.settings);
   const rec = payPeriodRecord(state, pp.periodStart, userId);
   return !!(rec && rec.status === 'approved' && rec.signedViaReceipt);
 }
 
+function isDaySoftLocked(state, dateIso, userId) {
+  return isDayLocked(state, dateIso, userId);
+}
+
 function dayLockMessage(state, dateIso, userId) {
   const pp = payPeriodForDate(dateIso, state.settings);
   const rec = payPeriodRecord(state, pp.periodStart, userId);
   if (rec && rec.status === 'approved' && rec.signedViaReceipt) {
-    return `${window.TC.fmtDayShort(dateIso)} is in ${pp.label} — Katrina signed this pay period, so edits are locked.`;
+    return `${window.TC.fmtDayShort(dateIso)} is in ${pp.label} — Katrina signed this pay period. Edits are locked for payroll, but you can override if a correction is needed.`;
   }
   return null;
 }
@@ -345,6 +360,54 @@ function payPeriodBreakdown(state, periodStartIso, userId, todayIso) {
   const assumed = payPeriodAssumptionHours(state, periodStartIso, userId, todayIso);
   const confirmed = Math.max(0, totals.total - assumed);
   return { ...totals, assumed, confirmed };
+}
+
+// Per-day rows clipped to a pay period — for Home/Send approval cards.
+function payPeriodDayRows(state, periodStartIso, userId) {
+  const TC = window.TC;
+  const pp = payPeriodForDate(periodStartIso, state.settings);
+  const rows = [];
+  const start = TC.parseDate(pp.periodStart);
+  const end = TC.parseDate(pp.periodEnd);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateIso = TC.isoDate(d);
+    const work = state.timeEntries
+      .filter(e => e.userId === userId && e.date === dateIso)
+      .reduce((a, e) => a + TC.entryHours(e), 0);
+    const pto = state.leaveEntries
+      .filter(l => l.userId === userId && l.date === dateIso && l.type === 'pto')
+      .reduce((a, l) => a + l.hours, 0);
+    const sick = state.leaveEntries
+      .filter(l => l.userId === userId && l.date === dateIso && l.type === 'sick')
+      .reduce((a, l) => a + l.hours, 0);
+    const holiday = state.leaveEntries
+      .filter(l => l.userId === userId && l.date === dateIso && l.type === 'holiday')
+      .reduce((a, l) => a + l.hours, 0);
+    const lwop = state.leaveEntries
+      .filter(l => l.userId === userId && l.date === dateIso && l.type === 'lwop')
+      .reduce((a, l) => a + l.hours, 0);
+    const total = work + pto + sick + holiday + lwop;
+    if (total > 0) {
+      rows.push({ dateIso, work, pto, sick, holiday, lwop, total });
+    }
+  }
+  return rows;
+}
+
+// Build Gmail compose URL with optional CC for approval emails.
+function buildGmailComposeUrl({ to, cc, subject, body }) {
+  let url = 'https://mail.google.com/mail/?view=cm&fs=1' +
+    `&to=${encodeURIComponent(to)}` +
+    `&su=${encodeURIComponent(subject)}` +
+    `&body=${encodeURIComponent(body)}`;
+  if (cc) url += `&cc=${encodeURIComponent(cc)}`;
+  return url;
+}
+
+function buildMailtoUrl({ to, cc, subject, body }) {
+  let url = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  if (cc) url += `&cc=${encodeURIComponent(cc)}`;
+  return url;
 }
 
 function payPeriodTimeOffTotal(totals) {
@@ -567,14 +630,14 @@ function makeActions(update) {
       });
     },
 
-    clockIn(userId) {
+    clockIn(userId, { force = false } = {}) {
       update(s => {
         const u = s.users.find(x => x.id === userId);
         if (!u || u.role !== 'employee') return s;
         if (s.activeClock && s.activeClock.userId === userId) return s;
         const now = new Date();
         const dateIso = window.TC.isoDate(now);
-        if (isDayLocked(s, dateIso, userId)) return s;
+        if (!force && isDayLocked(s, dateIso, userId)) return s;
         const weekId = window.TC.weekRange(now, 0).startIso;
         const wk = s.weekSubmissions.find(w => w.weekStart === weekId && w.userId === userId);
         const entry = {
@@ -655,10 +718,10 @@ function makeActions(update) {
       });
     },
 
-    updateEntry(id, patch, { manual = true } = {}) {
+    updateEntry(id, patch, { manual = true, force = false } = {}) {
       update(s => {
         const entry = s.timeEntries.find(e => e.id === id);
-        if (entry && isDayLocked(s, patch.date || entry.date, entry.userId)) return s;
+        if (!force && entry && isDayLocked(s, patch.date || entry.date, entry.userId)) return s;
         const next = {
           ...s,
           timeEntries: s.timeEntries.map(e =>
@@ -672,10 +735,10 @@ function makeActions(update) {
       });
     },
 
-    deleteEntry(id) {
+    deleteEntry(id, { force = false } = {}) {
       update(s => {
         const entry = s.timeEntries.find(e => e.id === id);
-        if (entry && isDayLocked(s, entry.date, entry.userId)) return s;
+        if (!force && entry && isDayLocked(s, entry.date, entry.userId)) return s;
         const next = { ...s, timeEntries: s.timeEntries.filter(e => e.id !== id) };
         // If we just deleted the live entry, clear the active clock too so
         // the timer stops and the Clock-In button comes back.
@@ -687,9 +750,9 @@ function makeActions(update) {
       });
     },
 
-    addManualEntry(userId, { date, clockIn, clockOut, breakMinutes, estimated = false }) {
+    addManualEntry(userId, { date, clockIn, clockOut, breakMinutes, estimated = false }, { force = false } = {}) {
       update(s => {
-        if (isDayLocked(s, date, userId)) return s;
+        if (!force && isDayLocked(s, date, userId)) return s;
         const weekId = window.TC.weekRange(window.TC.parseDate(date), 0).startIso;
         const entry = {
           id: 't-' + window.TC.uid(),
@@ -1129,13 +1192,14 @@ function makeActions(update) {
 
 Object.assign(window, {
   StoreContext, StoreProvider, useStore,
-  currentUser, employee, director,
-  entriesForWeek, leavesForWeek, weekSubmission, isDayLocked, dayLockMessage, isWeekLocked, weekTotals,
+  currentUser, employee, director, payroll,
+  entriesForWeek, leavesForWeek, weekSubmission, isDayLocked, isDaySoftLocked, dayLockMessage, isWeekLocked, weekTotals,
   payPeriodForDate, payPeriodRecord, payPeriodWeeks, payPeriodWeekStarts,
-  payPeriodReady, payPeriodTotals, payPeriodAssumptionHours, payPeriodBreakdown,
+  payPeriodReady, payPeriodTotals, payPeriodAssumptionHours, payPeriodBreakdown, payPeriodDayRows,
   payPeriodTimeOffTotal, payPeriodTimeOffParts, buildPayPeriodEmailSummary,
   payPeriodSubmitDeadline,
   buildApprovalRequest, buildApprovalReceipt,
   encodePayload, decodePayload,
   approvalRequestUrl, approvalReceiptUrl, readHashPayload,
+  buildGmailComposeUrl, buildMailtoUrl,
 });

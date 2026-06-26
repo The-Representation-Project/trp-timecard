@@ -188,7 +188,7 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
               maxWidth: 480,
             }}>
               {isEmployee
-                ? 'Everything in this period is locked and on its way to payroll. Sit tight — your direct deposit will land on the pay date above.'
+                ? 'Everything in this period is locked for payroll. You can still override individual days on Timesheet if a correction is needed.'
                 : 'This period is closed for payroll. Constituent weeks remain approved and edits are locked. Reopen only if payroll needs revisions.'}
             </div>
           </div>
@@ -395,6 +395,12 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
             onClick={() => window.printPayPeriodReceipt(state, payPeriod)}
           >
             ↓ Re-print signed PDF
+          </button>
+          <button
+            className="btn ghost small"
+            onClick={() => window.downloadPayPeriodExcel(state, payPeriod)}
+          >
+            ↓ Download Excel
           </button>
         </div>
       </div>
