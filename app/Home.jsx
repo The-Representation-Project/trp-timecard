@@ -195,7 +195,8 @@ function Home() {
     for (const ps of [...candidatePeriodStarts].sort()) {
       if (awaitingPP && ps === awaitingPP.periodStart) continue;
       const rec = payPeriodRecord(state, ps, user.id);
-      if (rec && rec.status === 'approved' && rec.signedViaReceipt) continue;
+      // Skip any approved period (Katrina receipt or offline backfill).
+      if (rec && rec.status === 'approved') continue;
       const pp = payPeriodForDate(ps, state.settings);
       const totals = payPeriodTotals(state, ps, user.id);
       const isCurrent = ps === payPeriodForDate(todayIso, state.settings).periodStart;

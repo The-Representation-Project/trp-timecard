@@ -350,6 +350,7 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
 
   const [copied, setCopied] = useStateSend(false);
   const [opened, setOpened] = useStateSend(false);
+  const [attested, setAttested] = useStateSend(false);
 
   const link = approvalRequestUrl(state, periodStartIso);
 
@@ -442,6 +443,25 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
         variant="full"
       />
 
+      <div className="cert-box" style={{borderLeftColor: 'var(--trp-navy)', marginBottom: 16}}>
+        <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 4}}>
+          Your attestation
+        </strong>
+        I, <strong>{emp.name}</strong>, certify that the hours shown for {pp.label}{' '}
+        ({TC.fmtRange(pp.periodStart, pp.periodEnd)}) are complete and accurate to the best
+        of my knowledge{totals.assumed > 0 ? ', including estimated hours for days not yet worked' : ''}.
+      </div>
+
+      <label className="checkbox-row" style={{marginBottom: 16, alignItems: 'flex-start'}}>
+        <input
+          type="checkbox"
+          checked={attested}
+          onChange={e => setAttested(e.target.checked)}
+          style={{marginTop: 3, flexShrink: 0}}
+        />
+        <span>I attest these hours are accurate and I am ready to send this pay period to Katrina for approval.</span>
+      </label>
+
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
         marginBottom: 16, padding: '12px 14px',
@@ -500,15 +520,30 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
         <button className="btn ghost" onClick={onClose}>Cancel</button>
         {!opened ? (
           <>
-            <button className="btn" onClick={() => openEmail('default')} style={{background: 'var(--trp-stone-700)'}}>
+            <button
+              className="btn"
+              onClick={() => openEmail('default')}
+              disabled={!attested}
+              style={{background: 'var(--trp-stone-700)'}}
+            >
               ✉ Default mail app
             </button>
-            <button className="btn" onClick={() => openEmail('gmail')} style={{background: 'var(--trp-coral)'}}>
+            <button
+              className="btn"
+              onClick={() => openEmail('gmail')}
+              disabled={!attested}
+              style={{background: 'var(--trp-coral)'}}
+            >
               ✉ Open Gmail
             </button>
           </>
         ) : (
-          <button className="btn" onClick={confirmEmailSent} style={{background: 'var(--trp-pacific-blue)'}}>
+          <button
+            className="btn"
+            onClick={confirmEmailSent}
+            disabled={!attested}
+            style={{background: 'var(--trp-pacific-blue)'}}
+          >
             ✓ I've sent the email
           </button>
         )}
