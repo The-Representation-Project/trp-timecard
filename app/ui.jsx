@@ -111,9 +111,12 @@ function WeekStatusBanner({ totals, state, userId, weekStart }) {
 
   const pp = payPeriodForDate(weekStart, state.settings);
   const rec = payPeriodRecord(state, pp.periodStart, userId);
-  let note = 'Edit any day below · send the whole pay period from Home';
-  if (rec && rec.status === 'approved') note = `${pp.label} approved · days in this period are locked`;
-  else if (rec && rec.status === 'awaiting_approval') note = `${pp.label} sent to Katrina · still editable until signed`;
+  let note = 'Edit any day below · send the whole pay period from Home when ready';
+  if (rec && rec.status === 'approved' && rec.signedViaReceipt) {
+    note = `${pp.label} signed by Katrina · this pay period is locked`;
+  } else if (rec && rec.status === 'awaiting_approval') {
+    note = `${pp.label} with Katrina · fully editable until she signs`;
+  }
 
   return (
     <div className={`week-banner ${kind}`}>
@@ -129,4 +132,71 @@ function WeekStatusBanner({ totals, state, userId, weekStart }) {
   );
 }
 
-Object.assign(window, { Badge, Modal, DecisionModal, Confirm, WeekStatusBanner });
+// Pay-period totals for send card, approval modal, and Katrina's review page.
+// Emphasizes: period total → worked vs time off → confirmed vs assumed (early submit).
+function PayPeriodTotalsSummary({ totals, todayIso, periodEnd, variant = 'full', align = 'left' }) {
+  const timeOff = payPeriodTimeOffTotal(totals);
+  const assumed = totals.assumed || 0;
+  const confirmed = totals.confirmed != null ? totals.confirmed : Math.max(0, totals.total - assumed);
+  const offParts = payPeriodTimeOffParts(totals);
+  const compact = variant === 'compact';
+
+  const alignStyle = align === 'right' ? { textAlign: 'right' } : undefined;
+
+  return (
+    <div className={`pp-totals-summary ${compact ? 'compact' : 'full'}`} style={alignStyle}>
+      <div className="pp-total-hero">
+        <div className="pp-total-label">Pay Period Total</div>
+        <div className="pp-total-num">{TC.fmtHours(totals.total)}<span className="pp-total-unit">hrs</span></div>
+        {!compact && totals.total > 0 && totals.total !== 80 && (
+          <div className="tiny muted" style={{marginTop: 4}}>
+            Semi-monthly periods are typically 80 hrs when full-time
+          </div>
+        )}
+      </div>
+
+      <div className="pp-worked-off" style={{marginTop: compact ? 8 : 14}}>
+        <div className="pp-row">
+          <span className="pp-row-label">Worked</span>
+          <span className="pp-row-val tnum">{TC.fmtHours(totals.work)} hrs</span>
+        </div>
+        <div className="pp-row">
+          <span className="pp-row-label">Time off</span>
+          <span className="pp-row-val tnum">{TC.fmtHours(timeOff)} hrs</span>
+        </div>
+        {offParts.length > 0 && (
+          <div className="pp-off-parts tiny muted">
+            {offParts.map((p, i) => (
+              <span key={p.label}>
+                {i > 0 && ' · '}
+                {TC.fmtHours(p.hours)} {p.label}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {assumed > 0 && (
+        <div className="pp-confirmed-assumed" style={{marginTop: compact ? 10 : 16}}>
+          <div className="pp-row confirmed">
+            <span className="pp-row-label">Confirmed</span>
+            <span className="pp-row-val tnum">{TC.fmtHours(confirmed)} hrs</span>
+          </div>
+          <div className="pp-assumed-block">
+            <div className="pp-row assumed">
+              <span className="pp-row-label">Assumed</span>
+              <span className="pp-row-val tnum">{TC.fmtHours(assumed)} hrs</span>
+            </div>
+            <div className="pp-assumed-note tiny">
+              Estimated for upcoming days in this pay period
+              {todayIso && periodEnd ? ` (${TC.fmtDayShort(todayIso)} → ${TC.fmtDayShort(periodEnd)})` : ''}
+              {' '}— submitted early for approval deadline.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { Badge, Modal, DecisionModal, Confirm, WeekStatusBanner, PayPeriodTotalsSummary });

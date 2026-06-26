@@ -52,7 +52,7 @@ function ClockCard({ user, onManualAdd }) {
   let statusLabel;
   if (onLunch) statusLabel = 'You are on lunch';
   else if (active) statusLabel = 'You are clocked in';
-  else if (locked) statusLabel = 'This pay period is approved and locked';
+  else if (locked) statusLabel = 'This pay period was signed by Katrina — locked';
   else statusLabel = 'Ready to clock in';
 
   let timerMs, timerSubLabel;
@@ -165,7 +165,7 @@ function Home() {
 
   // Most recently approved pay period
   const recentApprovedPP = [...state.payPeriods]
-    .filter(p => p.userId === user.id && p.status === 'approved' && p.decidedAt)
+    .filter(p => p.userId === user.id && p.status === 'approved' && p.signedViaReceipt && p.decidedAt)
     .sort((a, b) => (b.decidedAt || '').localeCompare(a.decidedAt || ''))[0];
 
   // Pay periods waiting on Erika to send to Katrina, or sitting with Katrina.
@@ -195,7 +195,7 @@ function Home() {
     for (const ps of [...candidatePeriodStarts].sort()) {
       if (awaitingPP && ps === awaitingPP.periodStart) continue;
       const rec = payPeriodRecord(state, ps, user.id);
-      if (rec && rec.status === 'approved') continue;
+      if (rec && rec.status === 'approved' && rec.signedViaReceipt) continue;
       const pp = payPeriodForDate(ps, state.settings);
       const totals = payPeriodTotals(state, ps, user.id);
       const isCurrent = ps === payPeriodForDate(todayIso, state.settings).periodStart;
@@ -422,9 +422,9 @@ function UnlockPeriodBanner({ payPeriod }) {
     <>
       <div style={{
         padding: '16px 18px',
-        background: 'linear-gradient(135deg, var(--trp-orange-100) 0%, white 100%)',
-        border: '1px solid var(--trp-orange)',
-        borderLeft: '6px solid var(--trp-orange)',
+        background: 'linear-gradient(135deg, var(--trp-pacific-50) 0%, white 100%)',
+        border: '1px solid var(--trp-pacific-blue)',
+        borderLeft: '6px solid var(--trp-pacific-blue)',
         borderRadius: 'var(--radius-md)',
         display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap',
@@ -433,31 +433,32 @@ function UnlockPeriodBanner({ payPeriod }) {
           <div style={{
             fontFamily: 'var(--font-display)', textTransform: 'uppercase',
             letterSpacing: 'var(--tracking-caps)', fontSize: 11, fontWeight: 700,
-            color: 'var(--trp-orange-700)', marginBottom: 4,
+            color: 'var(--trp-pacific-700)', marginBottom: 4,
           }}>
-            {pp.label} sent to Katrina
+            {pp.label} marked sent to Katrina
           </div>
           <div style={{fontWeight: 700, color: 'var(--trp-navy)', fontSize: 15, lineHeight: 1.35}}>
-            Need to fix hours before she signs? Unlock this pay period, edit day by day on Timesheet, then re-send.
+            Your hours stay fully editable until she signs. Clear this only if you
+            didn't send yet or want to re-send later.
           </div>
           {sentLabel && (
-            <div className="tiny muted" style={{marginTop: 6}}>Sent {sentLabel}</div>
+            <div className="tiny muted" style={{marginTop: 6}}>Marked sent {sentLabel}</div>
           )}
         </div>
         <button
-          className="btn"
-          style={{background: 'var(--trp-orange)', color: 'var(--trp-navy)', flexShrink: 0}}
+          className="btn ghost"
+          style={{flexShrink: 0}}
           onClick={() => setConfirmOpen(true)}
         >
-          🔓 Unlock for editing
+          Clear sent status
         </button>
       </div>
 
       <Confirm
         open={confirmOpen}
-        title="Unlock for editing?"
-        message={`Move ${pp.label} (${TC.fmtRange(pp.periodStart, pp.periodEnd)}) back to draft so you can edit on Timesheet. Nothing is emailed to Katrina. If she already signed, wait for her receipt link instead.`}
-        confirmLabel="Yes, unlock for editing"
+        title="Clear sent status?"
+        message={`Move ${pp.label} (${TC.fmtRange(pp.periodStart, pp.periodEnd)}) back to draft in the app. Your hours stay editable either way — this only clears the "sent to Katrina" flag.`}
+        confirmLabel="Yes, clear sent status"
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => {
           actions.cancelPayPeriodSend(payPeriod.periodStart, payPeriod.userId);
