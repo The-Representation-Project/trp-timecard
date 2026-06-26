@@ -11,10 +11,7 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
   const dir = state.users.find(u => u.role === 'director');
   const pp = payPeriodForDate(payPeriod.periodStart, state.settings);
   const totals = payPeriodTotals(state, payPeriod.periodStart, payPeriod.userId);
-  const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
-  const childWeeks = weekStarts
-    .map(ws => ({ ws, sub: weekSubmission(state, ws, payPeriod.userId), tot: weekTotals(state, ws, payPeriod.userId) }))
-    .filter(x => x.tot.total > 0);
+  const dayRows = payPeriodDayRows(state, payPeriod.periodStart, payPeriod.userId);
 
   const decidedAt = payPeriod.decidedAt ? new Date(payPeriod.decidedAt) : null;
   const decidedLabel = decidedAt
@@ -300,7 +297,7 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
           </div>
         )}
 
-        {/* Toggle weeks */}
+        {/* Toggle pay-period days */}
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
@@ -320,7 +317,7 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
             padding: 0,
           }}
         >
-          {open ? '▾' : '▸'} {childWeeks.length} week{childWeeks.length === 1 ? '' : 's'} in this period
+          {open ? '▾' : '▸'} {dayRows.length} day{dayRows.length === 1 ? '' : 's'} in {pp.label}
         </button>
 
         {open && (
@@ -328,7 +325,7 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
             <thead>
               <tr>
                 <th></th>
-                <th>Week</th>
+                <th>Day</th>
                 <th style={{textAlign: 'right'}}>Clocked</th>
                 <th style={{textAlign: 'right'}}>PTO</th>
                 <th style={{textAlign: 'right'}}>Sick</th>
@@ -338,8 +335,8 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
               </tr>
             </thead>
             <tbody>
-              {childWeeks.map(({ ws, tot }) => (
-                <tr key={ws}>
+              {dayRows.map(d => (
+                <tr key={d.dateIso}>
                   <td style={{width: 18}}>
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -354,15 +351,15 @@ function PayPeriodApprovedCard({ payPeriod, state, viewerRole = 'employee', defa
                     fontWeight: 700, fontSize: 11,
                     color: 'var(--trp-navy)',
                   }}>
-                    {TC.fmtRange(ws, TC.weekDays(ws)[6])}
+                    {TC.fmtDayShort(d.dateIso)}
                   </td>
-                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.workTotal)}</td>
-                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.ptoTotal)}</td>
-                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.sickTotal)}</td>
-                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(tot.holidayTotal || 0)}</td>
-                  <td className="tnum" style={{textAlign: 'right', color: (tot.lwopTotal || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(tot.lwopTotal || 0)}</td>
+                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.work)}</td>
+                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.pto)}</td>
+                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.sick)}</td>
+                  <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.holiday || 0)}</td>
+                  <td className="tnum" style={{textAlign: 'right', color: (d.lwop || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(d.lwop || 0)}</td>
                   <td className="tnum" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>
-                    {TC.fmtHours(tot.total)}
+                    {TC.fmtHours(d.total)}
                   </td>
                 </tr>
               ))}

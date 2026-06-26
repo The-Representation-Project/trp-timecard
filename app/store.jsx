@@ -362,7 +362,28 @@ function payPeriodBreakdown(state, periodStartIso, userId, todayIso) {
   return { ...totals, assumed, confirmed };
 }
 
+function dayHoursInPeriod(state, dateIso, userId) {
+  const TC = window.TC;
+  const work = state.timeEntries
+    .filter(e => e.userId === userId && e.date === dateIso)
+    .reduce((a, e) => a + TC.entryHours(e), 0);
+  const pto = state.leaveEntries
+    .filter(l => l.userId === userId && l.date === dateIso && l.type === 'pto')
+    .reduce((a, l) => a + l.hours, 0);
+  const sick = state.leaveEntries
+    .filter(l => l.userId === userId && l.date === dateIso && l.type === 'sick')
+    .reduce((a, l) => a + l.hours, 0);
+  const holiday = state.leaveEntries
+    .filter(l => l.userId === userId && l.date === dateIso && l.type === 'holiday')
+    .reduce((a, l) => a + l.hours, 0);
+  const lwop = state.leaveEntries
+    .filter(l => l.userId === userId && l.date === dateIso && l.type === 'lwop')
+    .reduce((a, l) => a + l.hours, 0);
+  return { work, pto, sick, holiday, lwop, total: work + pto + sick + holiday + lwop };
+}
+
 // Per-day rows clipped to a pay period — for Home/Send approval cards.
+// Only includes dates inside periodStart–periodEnd (never spillover weeks).
 function payPeriodDayRows(state, periodStartIso, userId) {
   const TC = window.TC;
   const pp = payPeriodForDate(periodStartIso, state.settings);
@@ -371,24 +392,37 @@ function payPeriodDayRows(state, periodStartIso, userId) {
   const end = TC.parseDate(pp.periodEnd);
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dateIso = TC.isoDate(d);
-    const work = state.timeEntries
-      .filter(e => e.userId === userId && e.date === dateIso)
-      .reduce((a, e) => a + TC.entryHours(e), 0);
-    const pto = state.leaveEntries
-      .filter(l => l.userId === userId && l.date === dateIso && l.type === 'pto')
-      .reduce((a, l) => a + l.hours, 0);
-    const sick = state.leaveEntries
-      .filter(l => l.userId === userId && l.date === dateIso && l.type === 'sick')
-      .reduce((a, l) => a + l.hours, 0);
-    const holiday = state.leaveEntries
-      .filter(l => l.userId === userId && l.date === dateIso && l.type === 'holiday')
-      .reduce((a, l) => a + l.hours, 0);
-    const lwop = state.leaveEntries
-      .filter(l => l.userId === userId && l.date === dateIso && l.type === 'lwop')
-      .reduce((a, l) => a + l.hours, 0);
-    const total = work + pto + sick + holiday + lwop;
-    if (total > 0) {
-      rows.push({ dateIso, work, pto, sick, holiday, lwop, total });
+    const h = dayHoursInPeriod(state, dateIso, userId);
+    if (h.total > 0) rows.push({ dateIso, ...h });
+  }
+  return rows;
+}
+
+// Full per-day detail for approval payloads (sessions + leave).
+function payPeriodDayDetail(state, periodStartIso, userId) {
+  const TC = window.TC;
+  const pp = payPeriodForDate(periodStartIso, state.settings);
+  const rows = [];
+  const start = TC.parseDate(pp.periodStart);
+  const end = TC.parseDate(pp.periodEnd);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dateIso = TC.isoDate(d);
+    const ents = state.timeEntries.filter(e => e.userId === userId && e.date === dateIso);
+    const lvs = state.leaveEntries.filter(l => l.userId === userId && l.date === dateIso);
+    const h = dayHoursInPeriod(state, dateIso, userId);
+    if (h.total > 0) {
+      rows.push({
+        dateIso,
+        ...h,
+        sessions: ents.map(e => ({
+          in: e.clockIn,
+          out: e.clockOut,
+          br: e.breakMinutes || 0,
+          ed: e.manuallyEdited ? 1 : 0,
+          est: e.estimated ? 1 : 0,
+        })),
+        leaves: lvs.map(l => ({ t: l.type, h: l.hours, n: l.name || undefined })),
+      });
     }
   }
   return rows;
@@ -499,48 +533,12 @@ function buildApprovalRequest(state, periodStartIso) {
   const assumed = payPeriodAssumptionHours(state, periodStartIso, emp.id, todayIso);
   const confirmed = Math.max(0, totals.total - assumed);
 
-  const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
-  const weeks = weekStarts.map(ws => {
-    const t = weekTotals(state, ws, emp.id);
-    const sub = weekSubmission(state, ws, emp.id);
-    // Include per-day detail (clipped to the period) so Katrina can review
-    // exactly what she's signing off on.
-    const ppStart = TC.parseDate(pp.periodStart);
-    const ppEnd = TC.parseDate(pp.periodEnd);
-    const days = TC.weekDays(ws).filter(d => {
-      const dt = TC.parseDate(d);
-      return dt >= ppStart && dt <= ppEnd;
-    }).map(d => {
-      const ents = state.timeEntries.filter(e => e.userId === emp.id && e.date === d);
-      const lvs = state.leaveEntries.filter(l => l.userId === emp.id && l.date === d);
-      return {
-        d,
-        sessions: ents.map(e => ({
-          in: e.clockIn,
-          out: e.clockOut,
-          br: e.breakMinutes || 0,
-          ed: e.manuallyEdited ? 1 : 0,
-          est: e.estimated ? 1 : 0,
-        })),
-        leaves: lvs.map(l => ({ t: l.type, h: l.hours, n: l.name || undefined })),
-      };
-    });
-    return {
-      ws,
-      we: TC.weekDays(ws)[6],
-      work: t.workTotal,
-      pto: t.ptoTotal,
-      sick: t.sickTotal,
-      holiday: t.holidayTotal,
-      lwop: t.lwopTotal,
-      total: t.total,
-      days,
-      submittedAt: sub ? sub.submittedAt : null,
-    };
-  }).filter(w => w.total > 0 || w.lwop > 0);
+  // Pay-period days only — never full calendar weeks (which bleed into
+  // adjacent periods like Jun 14–15 or Jul 1–4).
+  const periodDays = payPeriodDayDetail(state, periodStartIso, emp.id);
 
   return {
-    v: 1,
+    v: 2,
     kind: 'approve',
     pp: {
       periodStart: pp.periodStart,
@@ -550,7 +548,7 @@ function buildApprovalRequest(state, periodStartIso) {
     },
     employee: { name: emp.name, title: emp.title, email: emp.email },
     approver: { name: appr.name, title: appr.title, email: appr.email },
-    weeks,
+    periodDays,
     totals: { ...totals, assumed, confirmed },
     requestedAt: new Date().toISOString(),
   };
@@ -1195,7 +1193,7 @@ Object.assign(window, {
   currentUser, employee, director, payroll,
   entriesForWeek, leavesForWeek, weekSubmission, isDayLocked, isDaySoftLocked, dayLockMessage, isWeekLocked, weekTotals,
   payPeriodForDate, payPeriodRecord, payPeriodWeeks, payPeriodWeekStarts,
-  payPeriodReady, payPeriodTotals, payPeriodAssumptionHours, payPeriodBreakdown, payPeriodDayRows,
+  payPeriodReady, payPeriodTotals, payPeriodAssumptionHours, payPeriodBreakdown, payPeriodDayRows, payPeriodDayDetail,
   payPeriodTimeOffTotal, payPeriodTimeOffParts, buildPayPeriodEmailSummary,
   payPeriodSubmitDeadline,
   buildApprovalRequest, buildApprovalReceipt,

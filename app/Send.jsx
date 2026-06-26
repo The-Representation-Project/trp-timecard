@@ -98,6 +98,17 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
         </div>
       )}
 
+      <div style={{
+        fontFamily: 'var(--font-display)', textTransform: 'uppercase',
+        letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 11,
+        color: 'var(--trp-stone-700)', marginBottom: 8,
+      }}>
+        Pay period days · {TC.fmtRange(pp.periodStart, pp.periodEnd)} only
+      </div>
+      <div className="tiny muted" style={{marginBottom: 10}}>
+        Pay periods are approved as a whole — not week by week. Only days inside this period are shown.
+      </div>
+
       <table className="mini-table">
         <thead>
           <tr>

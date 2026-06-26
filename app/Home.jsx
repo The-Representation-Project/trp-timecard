@@ -172,8 +172,6 @@ function Home() {
   const currentPP = payPeriodForDate(todayIso, state.settings);
   const currentPPRec = payPeriodRecord(state, currentPP.periodStart, user.id);
   const currentPPTotals = payPeriodTotals(state, currentPP.periodStart, user.id);
-  const weekStart = TC.weekRange(today, 0).startIso;
-  const week = weekTotals(state, weekStart, user.id, now);
   const todayEntries = state.timeEntries.filter(e => e.userId === user.id && e.date === todayIso);
   const todayHours = todayEntries.reduce((a, e) => a + TC.entryHours(e, now), 0);
   const todayLeave = state.leaveEntries.filter(l => l.userId === user.id && l.date === todayIso);
@@ -321,13 +319,13 @@ function Home() {
             </div>
           </div>
           <div className="stat">
-            <div className="eyebrow">This Week</div>
-            <div className="value">{TC.fmtHours(week.total)}<span style={{fontSize: 16, marginLeft: 4, opacity: 0.5}}>/ 40</span></div>
+            <div className="eyebrow">This Pay Period · {currentPP.label}</div>
+            <div className="value">{TC.fmtHours(currentPPTotals.total)}<span style={{fontSize: 16, marginLeft: 4, opacity: 0.5}}>hrs</span></div>
             <div className="sub">
-              {TC.fmtHours(week.workTotal)} worked
-              {week.ptoTotal > 0 && ` · ${TC.fmtHours(week.ptoTotal)} PTO`}
-              {week.sickTotal > 0 && ` · ${TC.fmtHours(week.sickTotal)} sick`}
-              {week.holidayTotal > 0 && ` · ${TC.fmtHours(week.holidayTotal)} holiday`}
+              {TC.fmtHours(currentPPTotals.work)} worked
+              {currentPPTotals.pto > 0 && ` · ${TC.fmtHours(currentPPTotals.pto)} PTO`}
+              {currentPPTotals.sick > 0 && ` · ${TC.fmtHours(currentPPTotals.sick)} sick`}
+              {currentPPTotals.holiday > 0 && ` · ${TC.fmtHours(currentPPTotals.holiday)} holiday`}
             </div>
           </div>
         </div>

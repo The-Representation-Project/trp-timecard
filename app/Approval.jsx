@@ -63,7 +63,8 @@ function ApprovalTopbar({ payload }) {
 // ----- Review (pre-signature) ---------------------------------------------
 
 function ApprovalReviewPage({ payload, onSign }) {
-  const { pp, employee, approver, weeks, totals } = payload;
+  const { pp, employee, approver, totals } = payload;
+  const periodDays = payload.periodDays || legacyPeriodDaysFromWeeks(payload.weeks, pp);
   const assumed = totals.assumed || 0;
   const confirmed = totals.confirmed != null ? totals.confirmed : Math.max(0, totals.total - assumed);
 
@@ -141,50 +142,12 @@ function ApprovalReviewPage({ payload, onSign }) {
         )}
       </div>
 
-      <h3 className="card-title" style={{marginBottom: 12}}>Week-by-week breakdown</h3>
-      <div className="card" style={{padding: 0, overflowX: 'auto', marginBottom: 24}}>
-        <table className="ts-table">
-          <thead>
-            <tr>
-              <th>Week</th>
-              <th style={{textAlign: 'right'}}>Clocked</th>
-              <th style={{textAlign: 'right'}}>PTO</th>
-              <th style={{textAlign: 'right'}}>Sick</th>
-              <th style={{textAlign: 'right'}}>Holiday</th>
-              <th style={{textAlign: 'right'}}>LWOP</th>
-              <th style={{textAlign: 'right'}}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {weeks.map(w => (
-              <tr key={w.ws}>
-                <td className="day">{TC.fmtRange(w.ws, w.we)}</td>
-                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.work)}</td>
-                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.pto)}</td>
-                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.sick)}</td>
-                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(w.holiday || 0)}</td>
-                <td className="tnum" style={{textAlign: 'right', color: (w.lwop || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(w.lwop || 0)}</td>
-                <td className="tnum total" style={{textAlign: 'right'}}>{TC.fmtHours(w.total)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td>Total</td>
-              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.work)}</td>
-              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.pto)}</td>
-              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.sick)}</td>
-              <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(totals.holiday || 0)}</td>
-              <td className="tnum" style={{textAlign: 'right', color: (totals.lwop || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(totals.lwop || 0)}</td>
-              <td className="tnum total-val" style={{textAlign: 'right'}}>{TC.fmtHours(totals.total)}</td>
-            </tr>
-          </tfoot>
-        </table>
+      <h3 className="card-title" style={{marginBottom: 4}}>Pay period days</h3>
+      <div className="tiny muted" style={{marginBottom: 12}}>
+        Only {TC.fmtRange(pp.periodStart, pp.periodEnd)} — pay periods are approved as a whole, not week by week.
       </div>
-
-      <h3 className="card-title" style={{marginBottom: 12}}>Daily detail</h3>
-      <div className="card" style={{padding: 0, marginBottom: 24}}>
-        <DailyDetail weeks={weeks} />
+      <div className="card" style={{padding: 0, overflowX: 'auto', marginBottom: 24}}>
+        <PayPeriodDaysTable periodDays={periodDays} />
       </div>
 
       <SignatureBlock approver={approver} employee={employee} pp={pp} totals={totals} onSign={onSign} />
@@ -192,74 +155,76 @@ function ApprovalReviewPage({ payload, onSign }) {
   );
 }
 
-function DailyDetail({ weeks }) {
-  const rows = [];
+function legacyPeriodDaysFromWeeks(weeks, pp) {
+  if (!weeks || !weeks.length) return [];
+  const TC = window.TC;
+  const map = new Map();
   weeks.forEach(w => {
     (w.days || []).forEach(d => {
-      const hasContent = (d.sessions && d.sessions.length) || (d.leaves && d.leaves.length);
-      if (!hasContent) return;
-      rows.push({ ...d, weekLabel: TC.fmtRange(w.ws, w.we) });
+      if (pp && (d.d < pp.periodStart || d.d > pp.periodEnd)) return;
+      const work = (d.sessions || []).reduce((a, s) => a + sessionHours(s), 0);
+      const pto = (d.leaves || []).filter(l => l.t === 'pto').reduce((a, l) => a + l.h, 0);
+      const sick = (d.leaves || []).filter(l => l.t === 'sick').reduce((a, l) => a + l.h, 0);
+      const holiday = (d.leaves || []).filter(l => l.t === 'holiday').reduce((a, l) => a + l.h, 0);
+      const lwop = (d.leaves || []).filter(l => l.t === 'lwop').reduce((a, l) => a + l.h, 0);
+      map.set(d.d, {
+        dateIso: d.d,
+        work, pto, sick, holiday, lwop,
+        total: work + pto + sick + holiday + lwop,
+        sessions: d.sessions || [],
+        leaves: d.leaves || [],
+      });
     });
   });
+  return [...map.values()].sort((a, b) => a.dateIso.localeCompare(b.dateIso));
+}
 
-  if (rows.length === 0) {
-    return <div className="empty"><h3>No daily detail in payload</h3></div>;
+function PayPeriodDaysTable({ periodDays }) {
+  if (!periodDays.length) {
+    return <div className="empty" style={{padding: 20}}><h3>No hours in this pay period</h3></div>;
   }
-
   return (
     <table className="ts-table">
       <thead>
         <tr>
           <th>Day</th>
           <th>Sessions</th>
-          <th style={{textAlign: 'right'}}>Hours</th>
-          <th>Notes</th>
+          <th style={{textAlign: 'right'}}>Clocked</th>
+          <th style={{textAlign: 'right'}}>PTO</th>
+          <th style={{textAlign: 'right'}}>Sick</th>
+          <th style={{textAlign: 'right'}}>Holiday</th>
+          <th style={{textAlign: 'right'}}>LWOP</th>
+          <th style={{textAlign: 'right'}}>Total</th>
         </tr>
       </thead>
       <tbody>
-        {rows.map(r => {
-          const dayHrs = (r.sessions || []).reduce((a, s) => a + sessionHours(s), 0)
-            + (r.leaves || []).reduce((a, l) => a + l.h, 0);
-          const anyEdited = (r.sessions || []).some(s => s.ed);
-          return (
-            <tr key={r.d}>
-              <td className="day">{TC.fmtDayShort(r.d)}</td>
-              <td>
-                {(r.sessions || []).map((s, i) => (
-                  <div key={i} className="tiny" style={{margin: '3px 0'}}>
-                    <span className="tnum">{TC.fmtTime(s.in)} → {s.out ? TC.fmtTime(s.out) : '—'}</span>
-                    {s.br > 0 && <span className="muted"> · break {s.br}m</span>}
-                    {s.est ? <span className="manual-flag" style={{background: 'var(--trp-orange-100)', color: 'var(--trp-orange-700)'}}>Estimate</span> : null}
-                    {s.ed ? <span className="manual-flag">Edited</span> : null}
-                  </div>
-                ))}
-                {(r.leaves || []).map((l, i) => {
-                  const meta = l.t === 'pto'
-                    ? { label: 'PTO', color: 'var(--trp-orange-700)' }
-                    : l.t === 'sick'
-                      ? { label: 'Sick', color: 'var(--trp-pacific-700)' }
-                      : l.t === 'lwop'
-                        ? { label: 'LWOP', color: 'var(--trp-stone-700)' }
-                        : { label: 'Holiday', color: 'var(--trp-coral-700)' };
-                  return (
-                    <div key={'l'+i} className="tiny" style={{margin: '3px 0'}}>
-                      <strong style={{textTransform: 'uppercase', fontFamily: 'var(--font-display)', letterSpacing: 'var(--tracking-caps)', fontSize: 11, color: meta.color}}>
-                        {meta.label}
-                      </strong>
-                      {' · '}{TC.fmtHours(l.h)} hrs
-                      {l.n && <span className="muted" style={{marginLeft: 6}}>· {l.n}</span>}
-                    </div>
-                  );
-                })}
-              </td>
-              <td className="tnum total" style={{textAlign: 'right'}}>{TC.fmtHours(dayHrs)}</td>
-              <td className="tiny muted">
-                {(r.sessions || []).some(s => s.est) && <span>Includes estimated hours. </span>}
-                {anyEdited ? <span>Manually edited sessions.</span> : !(r.sessions || []).some(s => s.est) ? <span>—</span> : null}
-              </td>
-            </tr>
-          );
-        })}
+        {periodDays.map(d => (
+          <tr key={d.dateIso}>
+            <td className="day">{TC.fmtDayShort(d.dateIso)}</td>
+            <td className="tiny">
+              {(d.sessions || []).map((s, i) => (
+                <div key={i} style={{margin: '3px 0'}}>
+                  <span className="tnum">{TC.fmtTime(s.in)} → {s.out ? TC.fmtTime(s.out) : '—'}</span>
+                  {s.br > 0 && <span className="muted"> · break {s.br}m</span>}
+                  {s.est ? <span className="manual-flag" style={{background: 'var(--trp-orange-100)', color: 'var(--trp-orange-700)'}}>Estimate</span> : null}
+                  {s.ed ? <span className="manual-flag">Edited</span> : null}
+                </div>
+              ))}
+              {(d.leaves || []).map((l, i) => (
+                <div key={'l' + i} className="tiny" style={{margin: '3px 0'}}>
+                  <strong>{l.t.toUpperCase()}</strong> · {TC.fmtHours(l.h)} hrs
+                  {l.n && <span className="muted"> · {l.n}</span>}
+                </div>
+              ))}
+            </td>
+            <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.work)}</td>
+            <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.pto)}</td>
+            <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.sick)}</td>
+            <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(d.holiday || 0)}</td>
+            <td className="tnum" style={{textAlign: 'right', color: (d.lwop || 0) > 0 ? 'var(--trp-stone-700)' : undefined}}>{TC.fmtHours(d.lwop || 0)}</td>
+            <td className="tnum total" style={{textAlign: 'right'}}>{TC.fmtHours(d.total)}</td>
+          </tr>
+        ))}
       </tbody>
     </table>
   );

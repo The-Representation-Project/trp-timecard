@@ -493,7 +493,8 @@
 
   function buildApprovalReceiptHtml(payload, signature) {
     const TC = window.TC;
-    const { pp, employee, weeks, totals } = payload;
+    const { pp, employee, totals } = payload;
+    const periodDays = payload.periodDays || [];
     const signedAt = signature.signedAt ? new Date(signature.signedAt) : new Date();
     const signedAtLabel = signedAt.toLocaleString(undefined, {
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
@@ -505,15 +506,15 @@
     const exportedAt = new Date().toLocaleString();
     function caps(s) { return String(s).toUpperCase().replace(/I/g, 'i'); }
 
-    const childRows = weeks.map(w => `
+    const childRows = periodDays.map(d => `
       <tr>
-        <td class="day">${escapeHtml(TC.fmtRange(w.ws, w.we))}</td>
-        <td class="num">${(w.work || 0).toFixed(2)}</td>
-        <td class="num">${(w.pto || 0).toFixed(2)}</td>
-        <td class="num">${(w.sick || 0).toFixed(2)}</td>
-        <td class="num">${(w.holiday || 0).toFixed(2)}</td>
-        <td class="num">${(w.lwop || 0).toFixed(2)}</td>
-        <td class="num total">${(w.total || 0).toFixed(2)}</td>
+        <td class="day">${escapeHtml(TC.fmtDayShort(d.dateIso))}</td>
+        <td class="num">${(d.work || 0).toFixed(2)}</td>
+        <td class="num">${(d.pto || 0).toFixed(2)}</td>
+        <td class="num">${(d.sick || 0).toFixed(2)}</td>
+        <td class="num">${(d.holiday || 0).toFixed(2)}</td>
+        <td class="num">${(d.lwop || 0).toFixed(2)}</td>
+        <td class="num total">${(d.total || 0).toFixed(2)}</td>
       </tr>
     `).join('');
 
@@ -637,7 +638,7 @@
   <table class="weeks">
     <thead>
       <tr>
-        <th>${escapeHtml(caps('Week'))}</th>
+        <th>${escapeHtml(caps('Day'))}</th>
         <th class="num">${escapeHtml(caps('Clocked'))}</th>
         <th class="num">${escapeHtml(caps('PTO'))}</th>
         <th class="num">${escapeHtml(caps('Sick'))}</th>
