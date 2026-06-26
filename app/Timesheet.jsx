@@ -89,7 +89,7 @@ function Timesheet() {
                     {TC.fmtDayShort(d)}
                     {isToday && <div className="tiny muted" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2}}>Today</div>}
                     {isFuture && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-orange-700)'}}>Upcoming</div>}
-                    {dayLocked && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-pacific-700)'}}>Approved · locked</div>}
+                    {dayLocked && <div className="tiny" style={{textTransform: 'none', letterSpacing: 0, fontWeight: 400, marginTop: 2, color: 'var(--trp-pacific-700)'}}>Katrina signed · locked</div>}
                   </td>
                   <td>
                     {ents.length === 0 && lv.length === 0 && (
@@ -170,7 +170,10 @@ function Timesheet() {
       {allLocked && (
         <div className="comment-block" style={{marginTop: 16}}>
           <span className="from">Locked</span>
-          Every day this week is in a pay period Katrina has already signed off on.
+          Katrina signed off this pay period ({TC.fmtRange(
+            payPeriodForDate(days[0], state.settings).periodStart,
+            payPeriodForDate(days[0], state.settings).periodEnd
+          )}). Edits are locked until payroll needs a correction.
         </div>
       )}
 
@@ -238,6 +241,11 @@ function EntryEditor({ entryId, newDate, userId, onClose }) {
   });
 
   function save() {
+    if (date && isDayLocked(state, date, userId)) {
+      const msg = dayLockMessage(state, date, userId);
+      alert(msg || 'This day is locked because Katrina approved the pay period.');
+      return;
+    }
     // For NEW entries, clock-in is required (we have no fallback).
     // For EXISTING entries, fall back to whatever's already saved if a
     // field is blank — so the user can edit just the clock-out (or just

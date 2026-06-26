@@ -58,18 +58,13 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
           </div>
         </div>
         <div style={{textAlign: 'right'}}>
-          <div style={{fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 40, color: 'var(--trp-navy)', lineHeight: 1, fontVariantNumeric: 'tabular-nums'}}>
-            {TC.fmtHours(totals.total)}
-          </div>
-          <div className="tiny muted" style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontWeight: 700, fontSize: 10, marginTop: 2}}>
-            Period Total
-          </div>
-          {totals.assumed > 0 && (
-            <div className="tiny" style={{marginTop: 6, lineHeight: 1.4, color: 'var(--trp-orange-700)', fontWeight: 700}}>
-              {TC.fmtHours(totals.confirmed)} confirmed<br />
-              + {TC.fmtHours(totals.assumed)} assumed
-            </div>
-          )}
+          <PayPeriodTotalsSummary
+            totals={totals}
+            todayIso={todayIso}
+            periodEnd={pp.periodEnd}
+            variant="compact"
+            align="right"
+          />
         </div>
       </div>
 
@@ -98,9 +93,11 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
 
       {totals.assumed > 0 && (
         <div className="comment-block warn" style={{marginBottom: 14}}>
-          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Early pay-period submission</span>
-          Includes {TC.fmtHours(totals.assumed)} hrs assumed for days still to come ({TC.fmtDayShort(todayIso)} → {TC.fmtDayShort(pp.periodEnd)}).
-          Katrina will see the full {TC.fmtHours(totals.total)} hr period total when you send.
+          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Early submission for approval deadline</span>
+          Katrina will see the full {TC.fmtHours(totals.total)} hr pay period total above, with{' '}
+          {TC.fmtHours(totals.confirmed)} hrs confirmed and{' '}
+          <strong>{TC.fmtHours(totals.assumed)} hrs assumed</strong> (smaller, clearly labeled)
+          for days still to come. You submit 2 days before pay date so she can approve before payroll runs.
         </div>
       )}
 
@@ -377,15 +374,16 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
 
   const subject = `Timecard approval needed · ${emp.name} · ${pp.label}`;
 
-  const assumptionLine = totals.assumed > 0
-    ? `\nBreakdown: ${TC.fmtHours(totals.confirmed)} hrs confirmed (logged through ${TC.fmtDayShort(todayIso)}) + ${TC.fmtHours(totals.assumed)} hrs assumed for upcoming days before period close. Payroll runs on the ${TC.parseDate(pp.payDate).getDate()}th, so I'm attesting to those hours now and will adjust if anything changes.\n`
-    : '';
+  const summaryBlock = buildPayPeriodEmailSummary(totals, {
+    todayIso,
+    periodEnd: pp.periodEnd,
+    payDateLabel,
+  });
 
   const body =
     `Hi ${appr.name.split(/\s+|-/)[0]},\n\n` +
     `My timecard for ${pp.label} (${TC.fmtRange(pp.periodStart, pp.periodEnd)}) is ready for your approval.\n\n` +
-    `Period total: ${TC.fmtHours(totals.total)} hrs (${TC.fmtHours(totals.work)} clocked, ${TC.fmtHours(totals.pto)} PTO, ${TC.fmtHours(totals.sick)} sick${(totals.holiday || 0) > 0 ? `, ${TC.fmtHours(totals.holiday)} holiday` : ''}${(totals.lwop || 0) > 0 ? `, ${TC.fmtHours(totals.lwop)} LWOP` : ''})\n` +
-    assumptionLine +
+    `${summaryBlock}\n\n` +
     `Pay date: ${payDateLabel}\n` +
     `Approval needed by: ${deadlineLabel}\n\n` +
     `Click below to review and sign. The page will generate a signed PDF for payroll and a one-click link to send back to me so my records update.\n\n` +
@@ -404,20 +402,20 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
     });
   }
 
-  function send(via) {
-    // Submit any draft weeks first, then mark sent. (Both happen before
-    // we open the email so the local record matches what's en route.)
-    actions.submitAllWeeksInPeriod(periodStartIso, emp.id);
-    actions.markPayPeriodSent(periodStartIso, emp.id);
+  function openEmail(via) {
     setOpened(true);
-    // Always stash the link on the clipboard — if the email window fails
-    // to open or strips the URL, the user can paste it in directly.
     navigator.clipboard.writeText(link).catch(() => {});
     if (via === 'gmail') {
       window.open(gmailUrl, '_blank', 'noopener');
     } else {
       window.location.href = mailto;
     }
+  }
+
+  function confirmEmailSent() {
+    actions.submitAllWeeksInPeriod(periodStartIso, emp.id);
+    actions.markPayPeriodSent(periodStartIso, emp.id);
+    onClose();
   }
 
   return (
@@ -431,12 +429,18 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
         <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 4}}>
           How this works
         </strong>
-        Clicking <strong>Send</strong> opens your email app with a message to{' '}
-        <strong>{appr.email}</strong> already written, including a one-click
-        approval link. Katrina opens the link, reviews the hours, types her
-        name to sign, and emails back a receipt link that automatically marks
-        this period as approved in your Timecard.
+        Click <strong>Open Gmail</strong> (or your default mail app) to compose
+        the message to <strong>{appr.email}</strong> with the approval link.
+        Nothing is marked as sent until you confirm below — you can still edit
+        hours on Timesheet until then.
       </div>
+
+      <PayPeriodTotalsSummary
+        totals={totals}
+        todayIso={todayIso}
+        periodEnd={pp.periodEnd}
+        variant="full"
+      />
 
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
@@ -468,19 +472,20 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
 
       {opened && (
         <div className="comment-block" style={{margin: '0 0 14px', borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
-          <span className="from" style={{color: 'var(--trp-pacific-700)'}}>Email app opened</span>
-          Hit Send in your email client to deliver the approval request. If
-          nothing opened, use the copy-link button below and paste it into a
-          new email to {appr.email}.
+          <span className="from" style={{color: 'var(--trp-pacific-700)'}}>Email opened — hours still editable</span>
+          Hit Send in your email client when you're ready. Then click{' '}
+          <strong>I've sent the email</strong> below so the app knows it's with
+          Katrina. If nothing opened, copy the link and paste it into a new
+          email to {appr.email}.
         </div>
       )}
 
       {totals.assumed > 0 && (
         <div className="comment-block warn" style={{margin: '0 0 14px'}}>
-          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Includes assumed hours</span>
-          Katrina will see <strong>{TC.fmtHours(totals.total)} hrs total</strong> —{' '}
-          {TC.fmtHours(totals.confirmed)} confirmed through {TC.fmtDayShort(todayIso)} plus{' '}
-          {TC.fmtHours(totals.assumed)} assumed for days still to come in this pay period.
+          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Early submission — assumed hours included</span>
+          The email and approval page show the full {TC.fmtHours(totals.total)} hr pay period total, with{' '}
+          {TC.fmtHours(totals.confirmed)} hrs confirmed and {TC.fmtHours(totals.assumed)} hrs assumed
+          clearly separated for Katrina.
         </div>
       )}
 
@@ -493,12 +498,20 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
 
       <div className="modal-actions" style={{flexWrap: 'wrap'}}>
         <button className="btn ghost" onClick={onClose}>Cancel</button>
-        <button className="btn" onClick={() => send('default')} style={{background: 'var(--trp-stone-700)'}}>
-          ✉ Default mail app
-        </button>
-        <button className="btn" onClick={() => send('gmail')} style={{background: 'var(--trp-coral)'}}>
-          ✉ Open Gmail
-        </button>
+        {!opened ? (
+          <>
+            <button className="btn" onClick={() => openEmail('default')} style={{background: 'var(--trp-stone-700)'}}>
+              ✉ Default mail app
+            </button>
+            <button className="btn" onClick={() => openEmail('gmail')} style={{background: 'var(--trp-coral)'}}>
+              ✉ Open Gmail
+            </button>
+          </>
+        ) : (
+          <button className="btn" onClick={confirmEmailSent} style={{background: 'var(--trp-pacific-blue)'}}>
+            ✓ I've sent the email
+          </button>
+        )}
       </div>
     </Modal>
   );

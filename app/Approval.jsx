@@ -86,29 +86,23 @@ function ApprovalReviewPage({ payload, onSign }) {
           <div className="muted" style={{fontSize: 14}}>{periodLabel} &nbsp;·&nbsp; sent {requestedLabel}</div>
         </div>
         <div className="approval-totals">
-          <div className="eyebrow">Period Total</div>
-          <div className="big-num">{TC.fmtHours(totals.total)}<span className="unit">hrs</span></div>
-          {assumed > 0 ? (
-            <div className="tiny" style={{color: 'var(--trp-orange-700)', fontWeight: 700, marginTop: 4}}>
-              {TC.fmtHours(confirmed)} confirmed · {TC.fmtHours(assumed)} assumed
-            </div>
-          ) : (
-            <div className="tiny muted">
-              across {weeks.length} week{weeks.length === 1 ? '' : 's'}
-              {((totals.pto || 0) + (totals.sick || 0) + (totals.holiday || 0)) > 0 && (
-                <> · includes PTO, sick &amp; holiday</>
-              )}
-            </div>
-          )}
+          <PayPeriodTotalsSummary
+            totals={totals}
+            todayIso={TC.isoDate(new Date())}
+            periodEnd={pp.periodEnd}
+            variant="compact"
+            align="right"
+          />
         </div>
       </div>
 
       {assumed > 0 && (
         <div className="comment-block warn" style={{marginBottom: 20}}>
-          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Early submission · assumed hours included</span>
-          This pay period runs through {TC.fmtDayShort(pp.periodEnd)}. Some hours are marked as
-          estimates for days not yet worked — {TC.fmtHours(assumed)} hrs assumed,{' '}
-          {TC.fmtHours(confirmed)} hrs confirmed through today.
+          <span className="from" style={{color: 'var(--trp-orange-700)'}}>Submitted early for approval deadline</span>
+          {employee.name.split(/\s+|-/)[0]} sent this before the pay period ended ({TC.fmtDayShort(pp.periodEnd)}).
+          The <strong>{TC.fmtHours(assumed)} assumed hrs</strong> below are estimates for days not yet worked —
+          the {TC.fmtHours(confirmed)} confirmed hrs are already logged. Both roll up to the{' '}
+          {TC.fmtHours(totals.total)} hr pay period total above.
         </div>
       )}
 
@@ -235,6 +229,7 @@ function DailyDetail({ weeks }) {
                   <div key={i} className="tiny" style={{margin: '3px 0'}}>
                     <span className="tnum">{TC.fmtTime(s.in)} → {s.out ? TC.fmtTime(s.out) : '—'}</span>
                     {s.br > 0 && <span className="muted"> · break {s.br}m</span>}
+                    {s.est ? <span className="manual-flag" style={{background: 'var(--trp-orange-100)', color: 'var(--trp-orange-700)'}}>Estimate</span> : null}
                     {s.ed ? <span className="manual-flag">Edited</span> : null}
                   </div>
                 ))}
@@ -259,7 +254,8 @@ function DailyDetail({ weeks }) {
               </td>
               <td className="tnum total" style={{textAlign: 'right'}}>{TC.fmtHours(dayHrs)}</td>
               <td className="tiny muted">
-                {anyEdited ? <span>Manually edited sessions.</span> : <span>—</span>}
+                {(r.sessions || []).some(s => s.est) && <span>Includes estimated hours. </span>}
+                {anyEdited ? <span>Manually edited sessions.</span> : !(r.sessions || []).some(s => s.est) ? <span>—</span> : null}
               </td>
             </tr>
           );

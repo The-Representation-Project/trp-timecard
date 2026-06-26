@@ -206,12 +206,22 @@ function weekSubmission(state, weekStartIso, userId) {
   return state.weekSubmissions.find(w => w.weekStart === weekStartIso && w.userId === userId);
 }
 
-// Lock editing only after Katrina has signed off the whole pay period —
-// not when a week is "submitted" or when the period is merely sent.
+// Lock a semi-monthly pay period (1–15 or 16–end) ONLY after Katrina signs
+// via the receipt link. Sent-for-approval, submitted weeks, and offline
+// backfill records never lock editing.
 function isDayLocked(state, dateIso, userId) {
   const pp = payPeriodForDate(dateIso, state.settings);
   const rec = payPeriodRecord(state, pp.periodStart, userId);
-  return !!(rec && rec.status === 'approved');
+  return !!(rec && rec.status === 'approved' && rec.signedViaReceipt);
+}
+
+function dayLockMessage(state, dateIso, userId) {
+  const pp = payPeriodForDate(dateIso, state.settings);
+  const rec = payPeriodRecord(state, pp.periodStart, userId);
+  if (rec && rec.status === 'approved' && rec.signedViaReceipt) {
+    return `${window.TC.fmtDayShort(dateIso)} is in ${pp.label} — Katrina signed this pay period, so edits are locked.`;
+  }
+  return null;
 }
 
 function isWeekLocked(state, weekStartIso, userId) {
@@ -335,6 +345,49 @@ function payPeriodBreakdown(state, periodStartIso, userId, todayIso) {
   const assumed = payPeriodAssumptionHours(state, periodStartIso, userId, todayIso);
   const confirmed = Math.max(0, totals.total - assumed);
   return { ...totals, assumed, confirmed };
+}
+
+function payPeriodTimeOffTotal(totals) {
+  return (totals.pto || 0) + (totals.sick || 0) + (totals.holiday || 0) + (totals.lwop || 0);
+}
+
+function payPeriodTimeOffParts(totals) {
+  const parts = [];
+  if ((totals.pto || 0) > 0) parts.push({ label: 'PTO', hours: totals.pto });
+  if ((totals.sick || 0) > 0) parts.push({ label: 'Sick', hours: totals.sick });
+  if ((totals.holiday || 0) > 0) parts.push({ label: 'Holiday', hours: totals.holiday });
+  if ((totals.lwop || 0) > 0) parts.push({ label: 'LWOP', hours: totals.lwop });
+  return parts;
+}
+
+// Plain-text block for the approval email Katrina receives.
+function buildPayPeriodEmailSummary(totals, { todayIso, periodEnd, payDateLabel }) {
+  const TC = window.TC;
+  const timeOff = payPeriodTimeOffTotal(totals);
+  const assumed = totals.assumed || 0;
+  const confirmed = totals.confirmed != null ? totals.confirmed : Math.max(0, totals.total - assumed);
+  const offParts = payPeriodTimeOffParts(totals).map(p => `${TC.fmtHours(p.hours)} ${p.label}`).join(', ');
+
+  const lines = [
+    `PAY PERIOD TOTAL: ${TC.fmtHours(totals.total)} hrs`,
+    `  · ${TC.fmtHours(totals.work)} hrs worked (clocked in)`,
+  ];
+  if (timeOff > 0) {
+    lines.push(`  · ${TC.fmtHours(timeOff)} hrs time off${offParts ? ` (${offParts})` : ''}`);
+  }
+
+  if (assumed > 0) {
+    lines.push(
+      '',
+      'Submitted early for approval (payroll deadline):',
+      `  · ${TC.fmtHours(confirmed)} hrs CONFIRMED — logged through ${TC.fmtDayShort(todayIso)}`,
+      `  · ${TC.fmtHours(assumed)} hrs ASSUMED — estimated for upcoming days (${TC.fmtDayShort(todayIso)} → ${TC.fmtDayShort(periodEnd)})`,
+      '',
+      `I'm sending before the pay period ends so you can approve in time for pay date (${payDateLabel}). The ${TC.fmtHours(assumed)} assumed hrs are my best estimate for days not yet worked; I'll adjust if anything changes.`,
+    );
+  }
+
+  return lines.join('\n');
 }
 
 // A pay period is ready once it has logged hours and isn't already signed off.
@@ -604,6 +657,8 @@ function makeActions(update) {
 
     updateEntry(id, patch, { manual = true } = {}) {
       update(s => {
+        const entry = s.timeEntries.find(e => e.id === id);
+        if (entry && isDayLocked(s, patch.date || entry.date, entry.userId)) return s;
         const next = {
           ...s,
           timeEntries: s.timeEntries.map(e =>
@@ -619,6 +674,8 @@ function makeActions(update) {
 
     deleteEntry(id) {
       update(s => {
+        const entry = s.timeEntries.find(e => e.id === id);
+        if (entry && isDayLocked(s, entry.date, entry.userId)) return s;
         const next = { ...s, timeEntries: s.timeEntries.filter(e => e.id !== id) };
         // If we just deleted the live entry, clear the active clock too so
         // the timer stops and the Clock-In button comes back.
@@ -632,6 +689,7 @@ function makeActions(update) {
 
     addManualEntry(userId, { date, clockIn, clockOut, breakMinutes, estimated = false }) {
       update(s => {
+        if (isDayLocked(s, date, userId)) return s;
         const weekId = window.TC.weekRange(window.TC.parseDate(date), 0).startIso;
         const entry = {
           id: 't-' + window.TC.uid(),
@@ -729,6 +787,8 @@ function makeActions(update) {
 
         const signed = {
           status: 'approved',
+          signedViaReceipt: true,
+          offline: false,
           directorComment: receipt.comment || '',
           decidedAt: receipt.signedAt,
           signedName: receipt.signedName,
@@ -790,6 +850,7 @@ function makeActions(update) {
         const existing = payPeriods.find(p => p.periodStart === pp.periodStart && p.userId === userId);
         const signed = {
           status: 'approved',
+          signedViaReceipt: false,
           directorComment: comment || 'Approved offline / backfilled record.',
           decidedAt: signedAt,
           signedName, signedTitle,
@@ -818,25 +879,52 @@ function makeActions(update) {
       });
     },
 
-    // If Erika needs to make corrections after sending, this rewinds the
-    // pay period to draft so she can resubmit. (Constituent weeks unlock
-    // too, since the whole submission is being replaced.)
+    // Rewind a pay period to draft for editing. Works when the period was
+    // marked "sent" (awaiting_approval) or mistakenly stamped approved
+    // offline — not after Katrina's real signed receipt.
     cancelPayPeriodSend(periodStartIso, userId) {
       update(s => {
         const pp = payPeriodForDate(periodStartIso, s.settings);
         const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
-        let payPeriods = s.payPeriods.map(p =>
-          (p.periodStart === periodStartIso && p.userId === userId && p.status === 'awaiting_approval')
-            ? { ...p, status: 'pending', sentToApproverAt: null }
-            : p
+        const rec = payPeriodRecord(s, periodStartIso, userId);
+        const canReopen = rec && (
+          rec.status === 'awaiting_approval' ||
+          (rec.status === 'approved' && rec.offline)
         );
-        // Unlock the constituent weeks too — Erika needs to edit hours
-        // before resending. Approved weeks stay locked (already signed off).
+        if (!canReopen) return s;
+
+        let payPeriods = s.payPeriods.map(p => {
+          if (p.periodStart !== periodStartIso || p.userId !== userId) return p;
+          if (p.status === 'awaiting_approval') {
+            return { ...p, status: 'pending', sentToApproverAt: null };
+          }
+          if (p.status === 'approved' && p.offline) {
+            return {
+              ...p,
+              status: 'pending',
+              directorComment: '',
+              decidedAt: null,
+              signedName: null,
+              signedTitle: null,
+              signedAt: null,
+              offline: false,
+              sentToApproverAt: null,
+            };
+          }
+          return p;
+        });
+
+        const reopeningOffline = rec.status === 'approved' && rec.offline;
         const weekSubmissions = s.weekSubmissions.map(w => {
           if (w.userId !== userId) return w;
           if (!weekStarts.includes(w.weekStart)) return w;
-          if (w.status !== 'submitted') return w;
-          return { ...w, status: 'draft' };
+          if (w.status === 'submitted') {
+            return { ...w, status: 'draft', submittedAt: null };
+          }
+          if (reopeningOffline && w.status === 'approved') {
+            return { ...w, status: 'draft', decidedAt: null, directorComment: '' };
+          }
+          return w;
         });
         return { ...s, payPeriods, weekSubmissions };
       });
@@ -975,6 +1063,7 @@ function makeActions(update) {
           const existing = payPeriods.find(p => p.periodStart === pp.periodStart && p.userId === userId);
           const offline = {
             status: 'approved',
+            signedViaReceipt: false,
             directorComment: 'Backfilled — approved via payroll before using Timecard app.',
             decidedAt: signedAt,
             signedName: approverName || 'Katrina Steffek',
@@ -1041,9 +1130,10 @@ function makeActions(update) {
 Object.assign(window, {
   StoreContext, StoreProvider, useStore,
   currentUser, employee, director,
-  entriesForWeek, leavesForWeek, weekSubmission, isDayLocked, isWeekLocked, weekTotals,
+  entriesForWeek, leavesForWeek, weekSubmission, isDayLocked, dayLockMessage, isWeekLocked, weekTotals,
   payPeriodForDate, payPeriodRecord, payPeriodWeeks, payPeriodWeekStarts,
   payPeriodReady, payPeriodTotals, payPeriodAssumptionHours, payPeriodBreakdown,
+  payPeriodTimeOffTotal, payPeriodTimeOffParts, buildPayPeriodEmailSummary,
   payPeriodSubmitDeadline,
   buildApprovalRequest, buildApprovalReceipt,
   encodePayload, decodePayload,
