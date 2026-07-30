@@ -491,7 +491,7 @@
   // from the URL-hash payload + signature rather than a full app state, so
   // it can run in the approval context where localStorage is untouched.
 
-  function buildApprovalReceiptHtml(payload, signature) {
+  function buildApprovalReceiptHtml(payload, signature, receiptLink) {
     const TC = window.TC;
     const { pp, employee, totals } = payload;
     const periodDays = payload.periodDays || [];
@@ -519,6 +519,15 @@
     `).join('');
 
     const logoUrl = new URL('assets/TRP-Icon-Blue.png', window.location.href).href;
+    const linkBlock = receiptLink ? `
+  <div class="update-link">
+    <div class="from">${escapeHtml(caps('Required — update employee Timecard'))}</div>
+    <div style="margin-bottom:6px;">
+      The PDF alone does <strong>not</strong> update the Timecard app. Open this link
+      (or email it to the employee) so records show approved:
+    </div>
+    <div class="link">${escapeHtml(receiptLink)}</div>
+  </div>` : '';
 
     return `<!doctype html>
 <html lang="en">
@@ -567,6 +576,9 @@
   .sig-mark { font-family: 'Brush Script MT', 'Apple Chancery', cursive; font-size: 22px; color: #1FBDD6; padding: 0 0 4px; line-height: 1; }
   .note { margin-top: 18px; padding: 10px 14px; border-left: 3px solid #1FBDD6; background: #FAECE5; font-size: 11px; color: #003E56; }
   .note .from { font-family: 'LEMON MILK', 'Helvetica Neue', Arial, sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px; color: #6B6F75; display: block; margin-bottom: 3px; }
+  .update-link { margin-top: 16px; padding: 12px 14px; border: 2px solid #1FBDD6; background: #E8F8FB; border-radius: 4px; font-size: 11px; color: #003E56; }
+  .update-link .from { font-family: 'LEMON MILK', 'Helvetica Neue', Arial, sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; font-size: 9px; color: #0E7A8A; display: block; margin-bottom: 6px; }
+  .update-link .link { word-break: break-all; font-family: ui-monospace, monospace; font-size: 9px; color: #003E56; margin-top: 6px; }
   .footer { margin-top: 32px; padding-top: 14px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; font-size: 9px; color: #6B6F75; font-family: 'LEMON MILK', 'Helvetica Neue', Arial, sans-serif; text-transform: uppercase; letter-spacing: 0.08em; }
   @media screen { body { padding: 24px; max-width: 800px; margin: 0 auto; } }
 </style>
@@ -679,6 +691,8 @@
     </div>
   ` : ''}
 
+  ${linkBlock}
+
   <div class="footer">
     <div>The Representation Project · Timecard</div>
     <div>Generated ${escapeHtml(exportedAt)}</div>
@@ -687,8 +701,24 @@
 </html>`;
   }
 
-  function printApprovalPDF(payload, signature) {
-    const html = buildApprovalReceiptHtml(payload, signature);
+  function printApprovalPDF(payload, signature, receiptLink) {
+    // Build receipt link if caller didn't pass one (backward compatible).
+    let link = receiptLink;
+    if (!link && window.buildApprovalReceipt && window.approvalReceiptUrl) {
+      try {
+        const receipt = window.buildApprovalReceipt({
+          periodStart: payload.pp.periodStart,
+          periodEnd: payload.pp.periodEnd,
+          signedName: signature.signedName,
+          signedTitle: signature.signedTitle,
+          signedAt: signature.signedAt,
+          comment: signature.comment,
+          totalHours: signature.totalHours,
+        });
+        link = window.approvalReceiptUrl(receipt);
+      } catch (e) { link = ''; }
+    }
+    const html = buildApprovalReceiptHtml(payload, signature, link);
     const iframe = document.createElement('iframe');
     iframe.style.position = 'fixed';
     iframe.style.right = '0'; iframe.style.bottom = '0';

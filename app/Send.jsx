@@ -175,8 +175,9 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
             </button>
             <button className="btn ghost" onClick={onSend}>↻ Resend approval link</button>
             <PasteApprovalLinkButton />
+            <RecordFromPdfButton payPeriod={payPeriod} />
             <div className="tiny muted" style={{marginLeft: 'auto', alignSelf: 'center', maxWidth: 280, textAlign: 'right'}}>
-              Katrina signed? Paste the approval link from her email to update your records.
+              Only got a PDF (no link)? Use Record from signed PDF.
             </div>
           </>
         )}
@@ -568,7 +569,82 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
   );
 }
 
-Object.assign(window, { PayPeriodSendCard, SendForApprovalModal, PasteApprovalLinkButton });
+Object.assign(window, { PayPeriodSendCard, SendForApprovalModal, PasteApprovalLinkButton, RecordFromPdfButton });
+
+function RecordFromPdfButton({ payPeriod }) {
+  const { state, actions } = useStore();
+  const appr = director(state);
+  const pp = payPeriodForDate(payPeriod.periodStart, state.settings);
+  const totals = payPeriodTotals(state, payPeriod.periodStart, payPeriod.userId);
+  const [open, setOpen] = useStateSend(false);
+  const [signedName, setSignedName] = useStateSend(appr ? appr.name : 'Katrina Steffek');
+  const [signedTitle, setSignedTitle] = useStateSend(appr ? appr.title : 'Approver');
+  const [signedAtDate, setSignedAtDate] = useStateSend(TC.isoDate(new Date()));
+  const [comment, setComment] = useStateSend('Recorded from signed PDF — Katrina approved; no #receipt link in email.');
+
+  function save() {
+    const receipt = buildApprovalReceipt({
+      periodStart: pp.periodStart,
+      periodEnd: pp.periodEnd,
+      signedName: signedName.trim(),
+      signedTitle: signedTitle.trim(),
+      signedAt: new Date(signedAtDate + 'T12:00:00').toISOString(),
+      comment: comment.trim(),
+      totalHours: totals.total,
+    });
+    actions.importApprovalReceipt(receipt);
+    setOpen(false);
+    alert('Pay period marked approved from signed PDF. It is now locked for payroll (still editable with override if needed).');
+  }
+
+  return (
+    <>
+      <button className="btn ghost" onClick={() => setOpen(true)}>
+        📄 Record from signed PDF
+      </button>
+      {open && (
+        <Modal
+          title="Record approval from signed PDF"
+          subtitle={`${pp.label} · ${TC.fmtRange(pp.periodStart, pp.periodEnd)} · ${TC.fmtHours(totals.total)} hrs`}
+          onClose={() => setOpen(false)}
+          maxWidth={520}
+        >
+          <div className="cert-box" style={{borderLeftColor: 'var(--trp-pacific-blue)'}}>
+            <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 4}}>
+              Use when you only received the PDF
+            </strong>
+            Katrina's signature updates Timecard only via the #receipt= link. If she sent just the PDF,
+            enter the signature details from the PDF here so your Home tab shows approved.
+          </div>
+          <div className="field-row">
+            <label className="field">
+              <span className="lbl">Signed name (from PDF)</span>
+              <input type="text" value={signedName} onChange={e => setSignedName(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="lbl">Approval date</span>
+              <input type="date" value={signedAtDate} onChange={e => setSignedAtDate(e.target.value)} />
+            </label>
+          </div>
+          <label className="field">
+            <span className="lbl">Title</span>
+            <input type="text" value={signedTitle} onChange={e => setSignedTitle(e.target.value)} />
+          </label>
+          <label className="field">
+            <span className="lbl">Note</span>
+            <textarea rows={2} value={comment} onChange={e => setComment(e.target.value)} />
+          </label>
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn" style={{background: 'var(--trp-pacific-blue)'}} onClick={save} disabled={!signedName.trim()}>
+              ✓ Mark pay period approved
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
 
 function PasteApprovalLinkButton() {
   const { actions } = useStore();

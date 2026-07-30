@@ -24,8 +24,37 @@ function ApprovalPage({ payload }) {
   function handleSign(sig) {
     setSignature(sig);
     setPhase('signed');
-    // Auto-open the print dialog so Katrina has the PDF immediately.
-    setTimeout(() => window.printApprovalPDF(payload, sig), 350);
+    const receipt = buildApprovalReceipt({
+      periodStart: payload.pp.periodStart,
+      periodEnd: payload.pp.periodEnd,
+      signedName: sig.signedName,
+      signedTitle: sig.signedTitle,
+      signedAt: sig.signedAt,
+      comment: sig.comment,
+      totalHours: sig.totalHours,
+    });
+    const receiptLink = approvalReceiptUrl(receipt);
+    // Auto-open PDF with the update link printed on it, then open Gmail
+    // so Katrina doesn't stop at "PDF only".
+    setTimeout(() => window.printApprovalPDF(payload, sig, receiptLink), 350);
+    setTimeout(() => {
+      try {
+        const payrollEmail = 'jesse@faithfearfinance.com';
+        const subject = `Approved: ${payload.employee.name} timecard · ${payload.pp.label}`;
+        const body =
+          `Hi ${payload.employee.name.split(/\s+|-/)[0]},\n\n` +
+          `Approved ${payload.pp.label} (${TC.fmtRange(payload.pp.periodStart, payload.pp.periodEnd)}) — ${TC.fmtHours(sig.totalHours)} hrs.\n\n` +
+          `IMPORTANT: Click this link to update your Timecard app (the PDF alone does not update it):\n\n${receiptLink}\n\n` +
+          `${sig.signedName}\n${sig.signedTitle}`;
+        const gmail = buildGmailComposeUrl({
+          to: payload.employee.email,
+          cc: payrollEmail,
+          subject,
+          body,
+        });
+        window.open(gmail, '_blank', 'noopener');
+      } catch (e) { console.error(e); }
+    }, 900);
   }
 
   return (
@@ -368,8 +397,8 @@ function ApprovalSignedPage({ payload, signature }) {
   const body =
     `Hi ${payload.employee.name.split(/\s+|-/)[0]},\n\n` +
     `Approved ${payload.pp.label} (${TC.fmtRange(payload.pp.periodStart, payload.pp.periodEnd)}) — ${TC.fmtHours(signature.totalHours)} hrs.\n\n` +
-    `Click the link below to record the approval in your Timecard app:\n\n${receiptLink}\n\n` +
-    `The signed PDF for payroll opened in a separate window — save it as PDF. Jesse Barber (payroll) is CC'd on this email for payroll records.\n\n` +
+    `IMPORTANT: Click this link to update your Timecard app (the PDF alone does not update it):\n\n${receiptLink}\n\n` +
+    `Jesse Barber (payroll) is CC'd for payroll records.\n\n` +
     `${signature.signedName}\n${signature.signedTitle}`;
   const gmailErika = buildGmailComposeUrl({
     to: payload.employee.email,
@@ -412,13 +441,19 @@ function ApprovalSignedPage({ payload, signature }) {
         </div>
       </div>
 
-      <h3 className="card-title" style={{marginTop: 28, marginBottom: 12}}>What to do next</h3>
+      <div className="comment-block warn" style={{marginBottom: 20}}>
+        <span className="from" style={{color: 'var(--trp-coral-700)'}}>PDF alone is not enough</span>
+        Gmail should have opened with the approval link for Erika. If it didn't, click
+        <strong> Open Gmail</strong> below. The signed PDF now also prints the update link.
+      </div>
+
+      <h3 className="card-title" style={{marginTop: 8, marginBottom: 12}}>What to do next</h3>
       <div className="next-grid">
         <NextStepCard
           num="1"
           color="coral"
-          title="Email approval to Erika (CC Jesse / payroll)"
-          desc="Opens Gmail with the approval link for Erika and Jesse Barber (jesse@faithfearfinance.com) CC'd for payroll records. Just hit Send."
+          title="Email approval link to Erika (required)"
+          desc="Must include the #receipt= link so Erika's Timecard updates. PDF alone does not update her app. Jesse is CC'd."
           cta="Open Gmail"
           href={gmailErika}
           target="_blank"
@@ -426,16 +461,21 @@ function ApprovalSignedPage({ payload, signature }) {
         <NextStepCard
           num="2"
           color="pacific"
-          title="Save the signed PDF"
-          desc="The PDF opened in a print dialog. Save it (Save as PDF) — Jesse is CC'd on the email so payroll has a copy."
+          title="Save / re-print signed PDF"
+          desc="The PDF includes hours, your signature, AND the update link for Erika."
           cta="Re-open PDF"
-          onClick={() => window.printApprovalPDF(payload, signature)}
+          onClick={() => window.printApprovalPDF(payload, signature, receiptLink)}
         />
         <NextStepCard
           num="3"
           color="cream"
-          title="Done — close this tab"
-          desc="Everything's signed. The link can't be re-used; Erika will receive the approval notification."
+          title="Copy update link"
+          desc="If email truncates the link, copy it here and paste into the email body."
+          cta="Copy link"
+          onClick={() => {
+            navigator.clipboard.writeText(receiptLink);
+            alert('Approval link copied');
+          }}
         />
       </div>
 
