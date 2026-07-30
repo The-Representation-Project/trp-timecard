@@ -449,8 +449,9 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
         </strong>
         Click <strong>Open Gmail</strong> (or your default mail app) to compose
         the message to <strong>{appr.email}</strong> with the approval link.
-        Nothing is marked as sent until you confirm below — you can still edit
-        hours on Timesheet until then.
+        {window.CloudSync && window.CloudSync.status && window.CloudSync.status() === 'signed-in'
+          ? ' Because Cloud Sync is on, when Katrina signs your Timecard will update automatically — she does not need to email a link.'
+          : ' For automatic updates when Katrina signs, turn on ⚙ Cloud Sync and stay signed in. Otherwise she must email you the approval link.'}
       </div>
 
       <PayPeriodTotalsSummary

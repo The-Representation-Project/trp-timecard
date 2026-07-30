@@ -60,9 +60,82 @@ create policy "Users update own state"
 
 -- Enable real-time on the table so other devices get changes live.
 alter publication supabase_realtime add table public.tc_state;
+
+-- Official approvals Katrina writes when she signs. Erika's app picks these
+-- up automatically (no email link required).
+create table if not exists public.tc_approvals (
+  id uuid primary key default gen_random_uuid(),
+  employee_email text not null,
+  period_start date not null,
+  period_end date not null,
+  receipt jsonb not null,
+  signed_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  unique (employee_email, period_start)
+);
+
+alter table public.tc_approvals enable row level security;
+
+-- Katrina's approval page is anonymous — allow inserts of signed receipts.
+drop policy if exists "Anyone can insert approvals" on public.tc_approvals;
+create policy "Anyone can insert approvals"
+  on public.tc_approvals for insert
+  with check (true);
+
+-- Erika (signed in) can read approvals addressed to her email.
+drop policy if exists "Users read own email approvals" on public.tc_approvals;
+create policy "Users read own email approvals"
+  on public.tc_approvals for select
+  using (lower(auth.jwt() ->> 'email') = lower(employee_email));
+
+-- Allow updates so re-signing the same period upserts cleanly via anon.
+drop policy if exists "Anyone can update approvals" on public.tc_approvals;
+create policy "Anyone can update approvals"
+  on public.tc_approvals for update
+  using (true)
+  with check (true);
+
+alter publication supabase_realtime add table public.tc_approvals;
 ```
 
 3. Click **Run** (or Cmd+Enter). You should see "Success. No rows returned."
+
+If you already set up Timecard earlier, run this **extra** block too (adds automatic Katrina → Erika approvals):
+
+```sql
+create table if not exists public.tc_approvals (
+  id uuid primary key default gen_random_uuid(),
+  employee_email text not null,
+  period_start date not null,
+  period_end date not null,
+  receipt jsonb not null,
+  signed_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  unique (employee_email, period_start)
+);
+
+alter table public.tc_approvals enable row level security;
+
+drop policy if exists "Anyone can insert approvals" on public.tc_approvals;
+create policy "Anyone can insert approvals"
+  on public.tc_approvals for insert
+  with check (true);
+
+drop policy if exists "Users read own email approvals" on public.tc_approvals;
+create policy "Users read own email approvals"
+  on public.tc_approvals for select
+  using (lower(auth.jwt() ->> 'email') = lower(employee_email));
+
+drop policy if exists "Anyone can update approvals" on public.tc_approvals;
+create policy "Anyone can update approvals"
+  on public.tc_approvals for update
+  using (true)
+  with check (true);
+
+alter publication supabase_realtime add table public.tc_approvals;
+```
+
+(If it says the table is already in the publication, that's fine — ignore that error.)
 
 ## Step 4 — Lock down sign-ups so only you can sign in
 

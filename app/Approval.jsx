@@ -20,8 +20,10 @@ const { useState: useStateAP } = React;
 function ApprovalPage({ payload }) {
   const [phase, setPhase] = useStateAP('review'); // 'review' | 'signed'
   const [signature, setSignature] = useStateAP(null);
+  const [cloudSyncStatus, setCloudSyncStatus] = useStateAP(null); // null | 'saving' | 'ok' | 'error'
+  const [cloudSyncError, setCloudSyncError] = useStateAP('');
 
-  function handleSign(sig) {
+  async function handleSign(sig) {
     setSignature(sig);
     setPhase('signed');
     const receipt = buildApprovalReceipt({
@@ -34,27 +36,35 @@ function ApprovalPage({ payload }) {
       totalHours: sig.totalHours,
     });
     const receiptLink = approvalReceiptUrl(receipt);
-    // Auto-open PDF with the update link printed on it, then open Gmail
-    // so Katrina doesn't stop at "PDF only".
-    setTimeout(() => window.printApprovalPDF(payload, sig, receiptLink), 350);
-    setTimeout(() => {
-      try {
-        const payrollEmail = 'jesse@faithfearfinance.com';
-        const subject = `Approved: ${payload.employee.name} timecard · ${payload.pp.label}`;
-        const body =
-          `Hi ${payload.employee.name.split(/\s+|-/)[0]},\n\n` +
-          `Approved ${payload.pp.label} (${TC.fmtRange(payload.pp.periodStart, payload.pp.periodEnd)}) — ${TC.fmtHours(sig.totalHours)} hrs.\n\n` +
-          `IMPORTANT: Click this link to update your Timecard app (the PDF alone does not update it):\n\n${receiptLink}\n\n` +
-          `${sig.signedName}\n${sig.signedTitle}`;
-        const gmail = buildGmailComposeUrl({
-          to: payload.employee.email,
-          cc: payrollEmail,
-          subject,
-          body,
+
+    // 1) Official path: write approval to cloud so Erika's app updates live.
+    setCloudSyncStatus('saving');
+    try {
+      if (window.CloudSync && window.CloudSync.publishApproval) {
+        const result = await window.CloudSync.publishApproval({
+          cloud: payload.cloud,
+          employeeEmail: payload.employee.email,
+          periodStart: payload.pp.periodStart,
+          periodEnd: payload.pp.periodEnd,
+          receipt,
         });
-        window.open(gmail, '_blank', 'noopener');
-      } catch (e) { console.error(e); }
-    }, 900);
+        if (result && result.ok) {
+          setCloudSyncStatus('ok');
+        } else {
+          setCloudSyncStatus('error');
+          setCloudSyncError((result && (result.error || result.hint)) || 'Could not sync approval to cloud.');
+        }
+      } else {
+        setCloudSyncStatus('error');
+        setCloudSyncError('Cloud sync unavailable. Email the approval link so Erika can update Timecard.');
+      }
+    } catch (e) {
+      setCloudSyncStatus('error');
+      setCloudSyncError(e.message || String(e));
+    }
+
+    // 2) PDF still useful for payroll records (includes update link as backup).
+    setTimeout(() => window.printApprovalPDF(payload, sig, receiptLink), 350);
   }
 
   return (
@@ -64,7 +74,12 @@ function ApprovalPage({ payload }) {
         <ApprovalReviewPage payload={payload} onSign={handleSign} />
       )}
       {phase === 'signed' && signature && (
-        <ApprovalSignedPage payload={payload} signature={signature} />
+        <ApprovalSignedPage
+          payload={payload}
+          signature={signature}
+          cloudSyncStatus={cloudSyncStatus}
+          cloudSyncError={cloudSyncError}
+        />
       )}
     </div>
   );
@@ -375,7 +390,7 @@ function SignatureBlock({ approver, employee, pp, totals, onSign }) {
 
 // ----- Signed (post-signature) --------------------------------------------
 
-function ApprovalSignedPage({ payload, signature }) {
+function ApprovalSignedPage({ payload, signature, cloudSyncStatus, cloudSyncError }) {
   const receipt = buildApprovalReceipt({
     periodStart: payload.pp.periodStart,
     periodEnd: payload.pp.periodEnd,
@@ -420,9 +435,26 @@ function ApprovalSignedPage({ payload, signature }) {
         <h1 style={{margin: '12px 0 4px'}}>Timecard approved</h1>
         <p className="lead" style={{maxWidth: 560}}>
           You signed off on <strong>{payload.employee.name}</strong>'s pay period
-          for <strong>{payload.pp.label}</strong> at {signedAtLabel}. The signed
-          PDF receipt opened in a print dialog — save it for payroll.
+          for <strong>{payload.pp.label}</strong> at {signedAtLabel}.
         </p>
+        {cloudSyncStatus === 'saving' && (
+          <div className="comment-block" style={{marginTop: 14, borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
+            <span className="from" style={{color: 'var(--trp-pacific-700)'}}>Syncing official approval…</span>
+            Writing Katrina's signature to cloud so Erika's Timecard updates automatically.
+          </div>
+        )}
+        {cloudSyncStatus === 'ok' && (
+          <div className="comment-block" style={{marginTop: 14, borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
+            <span className="from" style={{color: 'var(--trp-pacific-700)'}}>Official approval synced</span>
+            Erika's Timecard will update automatically — no link click required. Save the PDF for payroll if needed.
+          </div>
+        )}
+        {cloudSyncStatus === 'error' && (
+          <div className="comment-block warn" style={{marginTop: 14}}>
+            <span className="from" style={{color: 'var(--trp-coral-700)'}}>Cloud sync failed — email the link</span>
+            {cloudSyncError || 'Could not write the approval to cloud.'} Use Open Gmail below so Erika still gets the update link.
+          </div>
+        )}
       </div>
 
       <div className="signed-sig-block">
@@ -441,10 +473,13 @@ function ApprovalSignedPage({ payload, signature }) {
         </div>
       </div>
 
-      <div className="comment-block warn" style={{marginBottom: 20}}>
-        <span className="from" style={{color: 'var(--trp-coral-700)'}}>PDF alone is not enough</span>
-        Gmail should have opened with the approval link for Erika. If it didn't, click
-        <strong> Open Gmail</strong> below. The signed PDF now also prints the update link.
+      <div className="comment-block" style={{marginBottom: 20, borderLeftColor: cloudSyncStatus === 'ok' ? 'var(--trp-pacific-blue)' : 'var(--trp-coral)', background: cloudSyncStatus === 'ok' ? 'var(--trp-pacific-50)' : undefined}}>
+        <span className="from" style={{color: cloudSyncStatus === 'ok' ? 'var(--trp-pacific-700)' : 'var(--trp-coral-700)'}}>
+          {cloudSyncStatus === 'ok' ? 'Primary: cloud sync (automatic)' : 'Backup: email the approval link'}
+        </span>
+        {cloudSyncStatus === 'ok'
+          ? 'Erika does not need to click anything. Optionally email Jesse the PDF for payroll records.'
+          : 'Cloud sync did not complete. Open Gmail so Erika receives the #receipt= link — the PDF alone will not update Timecard.'}
       </div>
 
       <h3 className="card-title" style={{marginTop: 8, marginBottom: 12}}>What to do next</h3>
@@ -452,8 +487,10 @@ function ApprovalSignedPage({ payload, signature }) {
         <NextStepCard
           num="1"
           color="coral"
-          title="Email approval link to Erika (required)"
-          desc="Must include the #receipt= link so Erika's Timecard updates. PDF alone does not update her app. Jesse is CC'd."
+          title={cloudSyncStatus === 'ok' ? 'Optional: email PDF to payroll' : 'Email approval link to Erika (required)'}
+          desc={cloudSyncStatus === 'ok'
+            ? 'Jesse is CC’d. Attach the signed PDF if payroll wants a file copy.'
+            : 'Must include the #receipt= link so Erika’s Timecard updates. Jesse is CC’d.'}
           cta="Open Gmail"
           href={gmailErika}
           target="_blank"
@@ -462,17 +499,19 @@ function ApprovalSignedPage({ payload, signature }) {
           num="2"
           color="pacific"
           title="Save / re-print signed PDF"
-          desc="The PDF includes hours, your signature, AND the update link for Erika."
+          desc="Official signed PDF for payroll records."
           cta="Re-open PDF"
           onClick={() => window.printApprovalPDF(payload, signature, receiptLink)}
         />
         <NextStepCard
           num="3"
           color="cream"
-          title="Copy update link"
-          desc="If email truncates the link, copy it here and paste into the email body."
-          cta="Copy link"
-          onClick={() => {
+          title="Done"
+          desc={cloudSyncStatus === 'ok'
+            ? 'Signature is on record in cloud. You can close this tab.'
+            : 'If email truncates the link, use Copy link below.'}
+          cta={cloudSyncStatus === 'ok' ? null : 'Copy link'}
+          onClick={cloudSyncStatus === 'ok' ? null : () => {
             navigator.clipboard.writeText(receiptLink);
             alert('Approval link copied');
           }}

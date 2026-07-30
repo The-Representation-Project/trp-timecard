@@ -605,6 +605,11 @@ function buildApprovalRequest(state, periodStartIso) {
     approver: { name: appr.name, title: appr.title, email: appr.email },
     periodDays,
     totals: { ...totals, assumed, confirmed },
+    // Lets Katrina's anonymous approval page write the signed receipt to
+    // Supabase so Erika's Timecard updates automatically.
+    cloud: (window.CloudSync && window.CloudSync.getPublicCloudConfig)
+      ? window.CloudSync.getPublicCloudConfig()
+      : null,
     requestedAt: new Date().toISOString(),
   };
 }

@@ -33,13 +33,10 @@ function App() {
   // Cloud settings modal toggle.
   const [showCloud, setShowCloud] = useStateA(false);
 
-  // Handle inbound receipt links: import + clean the URL + show a toast.
-  // Also re-apply any pending receipt from sessionStorage (cloud sync can
-  // race and wipe the first apply).
+  // Handle inbound receipt links + automatic cloud approvals from Katrina.
   useEffectA(() => {
     function applyReceipt(payload) {
-      if (!payload || payload.kind === 'approve') return false;
-      // payload may be the receipt itself (kind:'receipt') or already unwrapped
+      if (!payload) return false;
       const receipt = payload.kind === 'receipt' ? payload : payload;
       if (!receipt.periodStart || !receipt.signedName) return false;
       actions.importApprovalReceipt(receipt);
@@ -54,22 +51,48 @@ function App() {
         history.replaceState(null, '', window.location.pathname + window.location.search);
         return;
       }
-      // No hash — still try pending receipt from a prior click this session.
       try {
         const raw = sessionStorage.getItem('trp-tc-pending-receipt');
-        if (raw) {
-          const pending = JSON.parse(raw);
-          applyReceipt(pending);
-        }
+        if (raw) applyReceipt(JSON.parse(raw));
       } catch (e) {}
     }
+
+    async function pullCloudApprovals() {
+      const cs = window.CloudSync;
+      if (!cs || cs.status() !== 'signed-in' || !cs.fetchMyApprovals) return;
+      try {
+        const { data } = await cs.fetchMyApprovals();
+        (data || []).forEach(row => {
+          if (row && row.receipt) applyReceipt(row.receipt);
+        });
+      } catch (e) {
+        console.error('[Timecard] fetchMyApprovals failed', e);
+      }
+    }
+
     handleHash();
     window.addEventListener('hashchange', handleHash);
-    // Re-check shortly after mount so a slow cloud pull can't leave us stuck.
-    const t = setTimeout(handleHash, 1200);
+    const t = setTimeout(() => { handleHash(); pullCloudApprovals(); }, 800);
+
+    let offApproval = null;
+    if (window.CloudSync && window.CloudSync.onApproval) {
+      offApproval = window.CloudSync.onApproval(row => {
+        if (row && row.receipt) applyReceipt(row.receipt);
+      });
+    }
+    const offStatus = window.CloudSync
+      ? window.CloudSync.onStatusChange(s => { if (s === 'signed-in') pullCloudApprovals(); })
+      : null;
+
+    // Poll occasionally while awaiting (covers missed realtime).
+    const poll = setInterval(pullCloudApprovals, 20000);
+
     return () => {
       window.removeEventListener('hashchange', handleHash);
       clearTimeout(t);
+      clearInterval(poll);
+      if (offApproval) offApproval();
+      if (offStatus) offStatus();
     };
   }, []); // eslint-disable-line
 
