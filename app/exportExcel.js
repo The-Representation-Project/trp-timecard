@@ -1,8 +1,9 @@
-// app/exportExcel.js — branded pay-period Excel export (SpreadsheetML).
-// Matches TRP PDF receipt styling: Pacific Blue headers, cream accents, totals grid.
+// app/exportExcel.js — branded pay-period Excel export.
+// Uses HTML Excel format (Excel opens it with full CSS colors/fonts).
+// SpreadsheetML styles are often stripped by Sheets / Excel Online.
 
 (function () {
-  function escapeXml(s) {
+  function escapeHtml(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -14,18 +15,11 @@
     return String(s).toUpperCase().replace(/I/g, 'i');
   }
 
-  function cell(value, styleId, type) {
-    const t = type || (typeof value === 'number' ? 'Number' : 'String');
-    const v = value == null ? '' : value;
-    return `<Cell ss:StyleID="${styleId}"><Data ss:Type="${t}">${escapeXml(v)}</Data></Cell>`;
+  function fmtNum(n) {
+    return (Number(n) || 0).toFixed(2);
   }
 
-  function row(cells, height) {
-    const h = height ? ` ss:Height="${height}"` : '';
-    return `<Row${h}>${cells.join('')}</Row>`;
-  }
-
-  function buildPayPeriodRows(state, payPeriod) {
+  function buildPayPeriodHtml(state, payPeriod) {
     const TC = window.TC;
     const user = state.users.find(u => u.id === payPeriod.userId) || {};
     const dir = state.users.find(u => u.role === 'director') || {};
@@ -44,64 +38,11 @@
       weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
     });
     const exportedAt = new Date().toLocaleString();
-    const status = payPeriod.status === 'approved' ? 'APPROVED · SIGNED OFF' : (payPeriod.status || 'pending').toUpperCase();
+    const status = payPeriod.status === 'approved'
+      ? 'APPROVED · SIGNED OFF'
+      : (payPeriod.status || 'pending').toUpperCase();
 
-    const rows = [];
-
-    // Title block
-    rows.push(row([cell('The Representation Project', 'Org'), cell('', 'Blank'), cell('', 'Blank'), cell('', 'Blank'), cell('', 'Blank'), cell('', 'Blank'), cell(status, 'Badge')], 28));
-    rows.push(row([cell(caps('Timecard · Pay Period Receipt'), 'Subtitle')]));
-    rows.push(row([cell('', 'Blank')]));
-
-    rows.push(row([
-      cell(caps('Employee'), 'Label'), cell(user.name || '—', 'Value'),
-      cell(caps('Pay Date'), 'Label'), cell(payDateLabel, 'Value'),
-    ]));
-    rows.push(row([
-      cell(caps('Title'), 'Label'), cell(user.title || '', 'Value'),
-      cell(caps('Email'), 'Label'), cell(user.email || '', 'Value'),
-    ]));
-    rows.push(row([
-      cell(caps('Period'), 'Label'), cell(TC.fmtRange(pp.periodStart, pp.periodEnd), 'Value'),
-      cell(caps('Schedule'), 'Label'), cell('Semi-monthly', 'Value'),
-    ]));
-    rows.push(row([cell('', 'Blank')]));
-
-    // Totals strip
-    rows.push(row([
-      cell(caps('Total Hours'), 'TotalsLabel'),
-      cell(caps('Clocked'), 'TotalsLabel'),
-      cell(caps('PTO'), 'TotalsLabel'),
-      cell(caps('Sick'), 'TotalsLabel'),
-      cell(caps('Holiday'), 'TotalsLabel'),
-      cell(caps('LWOP'), 'TotalsLabel'),
-    ]));
-    rows.push(row([
-      cell(totals.total, 'TotalsGrand', 'Number'),
-      cell(totals.work, 'TotalsNum', 'Number'),
-      cell(totals.pto, 'TotalsNum', 'Number'),
-      cell(totals.sick, 'TotalsNum', 'Number'),
-      cell(totals.holiday || 0, 'TotalsNum', 'Number'),
-      cell(totals.lwop || 0, 'TotalsNum', 'Number'),
-    ]));
-    rows.push(row([cell('', 'Blank')]));
-
-    // Daily detail header
-    rows.push(row([
-      cell(caps('Date'), 'TableHead'),
-      cell(caps('Day'), 'TableHead'),
-      cell(caps('Clock In'), 'TableHead'),
-      cell(caps('Clock Out'), 'TableHead'),
-      cell(caps('Break (min)'), 'TableHead'),
-      cell(caps('Worked'), 'TableHead'),
-      cell(caps('PTO'), 'TableHead'),
-      cell(caps('Sick'), 'TableHead'),
-      cell(caps('Holiday'), 'TableHead'),
-      cell(caps('LWOP'), 'TableHead'),
-      cell(caps('Daily Total'), 'TableHead'),
-      cell(caps('Notes'), 'TableHead'),
-    ]));
-
+    const dayRows = [];
     const start = TC.parseDate(pp.periodStart);
     const end = TC.parseDate(pp.periodEnd);
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -117,121 +58,365 @@
       if (entries.length === 0 && leaves.length === 0) continue;
 
       if (entries.length === 0) {
-        const dailyTotal = ptoH + sickH + holH;
-        rows.push(row([
-          cell(dateIso, 'TableCell'),
-          cell(dayLabel, 'TableCell'),
-          cell('—', 'TableCell'),
-          cell('—', 'TableCell'),
-          cell('', 'TableCell'),
-          cell(0, 'TableNum', 'Number'),
-          cell(ptoH, 'TableNum', 'Number'),
-          cell(sickH, 'TableNum', 'Number'),
-          cell(holH, 'TableNum', 'Number'),
-          cell(lwopH, 'TableNum', 'Number'),
-          cell(dailyTotal, 'TableTotal', 'Number'),
-          cell(leaves.map(l => l.name || l.type).join('; '), 'TableCell'),
-        ]));
+        dayRows.push({
+          dateIso, dayLabel,
+          clockIn: '—', clockOut: '—', breakMin: '',
+          work: 0, pto: ptoH, sick: sickH, holiday: holH, lwop: lwopH,
+          total: ptoH + sickH + holH,
+          notes: leaves.map(l => l.name || l.type).join('; '),
+        });
       } else {
         entries.forEach((e, idx) => {
           const hrs = TC.entryHours(e);
           const notes = [];
           if (e.manuallyEdited) notes.push('Edited');
           if (e.estimated) notes.push('Estimate');
-          rows.push(row([
-            cell(idx === 0 ? dateIso : '', 'TableCell'),
-            cell(idx === 0 ? dayLabel : '', 'TableCell'),
-            cell(e.clockIn ? TC.fmtTime(e.clockIn) : '—', 'TableCell'),
-            cell(e.clockOut ? TC.fmtTime(e.clockOut) : '—', 'TableCell'),
-            cell(e.breakMinutes || 0, 'TableNum', 'Number'),
-            cell(hrs, 'TableNum', 'Number'),
-            cell(idx === 0 ? ptoH : '', idx === 0 ? 'TableNum' : 'TableCell', idx === 0 ? 'Number' : undefined),
-            cell(idx === 0 ? sickH : '', idx === 0 ? 'TableNum' : 'TableCell', idx === 0 ? 'Number' : undefined),
-            cell(idx === 0 ? holH : '', idx === 0 ? 'TableNum' : 'TableCell', idx === 0 ? 'Number' : undefined),
-            cell(idx === 0 ? lwopH : '', idx === 0 ? 'TableNum' : 'TableCell', idx === 0 ? 'Number' : undefined),
-            cell(idx === 0 ? hrs + ptoH + sickH + holH : hrs, 'TableTotal', 'Number'),
-            cell(notes.join(', '), 'TableCell'),
-          ]));
+          dayRows.push({
+            dateIso: idx === 0 ? dateIso : '',
+            dayLabel: idx === 0 ? dayLabel : '',
+            clockIn: e.clockIn ? TC.fmtTime(e.clockIn) : '—',
+            clockOut: e.clockOut ? TC.fmtTime(e.clockOut) : '—',
+            breakMin: e.breakMinutes || 0,
+            work: hrs,
+            pto: idx === 0 ? ptoH : '',
+            sick: idx === 0 ? sickH : '',
+            holiday: idx === 0 ? holH : '',
+            lwop: idx === 0 ? lwopH : '',
+            total: idx === 0 ? hrs + ptoH + sickH + holH : hrs,
+            notes: notes.join(', '),
+          });
         });
       }
     }
 
-    rows.push(row([cell('', 'Blank')]));
+    const detailHtml = dayRows.map(r => `
+      <tr>
+        <td class="cell">${escapeHtml(r.dateIso)}</td>
+        <td class="cell">${escapeHtml(r.dayLabel)}</td>
+        <td class="cell">${escapeHtml(r.clockIn)}</td>
+        <td class="cell">${escapeHtml(r.clockOut)}</td>
+        <td class="num">${r.breakMin === '' ? '' : escapeHtml(r.breakMin)}</td>
+        <td class="num">${fmtNum(r.work)}</td>
+        <td class="num">${r.pto === '' ? '' : fmtNum(r.pto)}</td>
+        <td class="num">${r.sick === '' ? '' : fmtNum(r.sick)}</td>
+        <td class="num">${r.holiday === '' ? '' : fmtNum(r.holiday)}</td>
+        <td class="num">${r.lwop === '' ? '' : fmtNum(r.lwop)}</td>
+        <td class="total">${fmtNum(r.total)}</td>
+        <td class="cell">${escapeHtml(r.notes)}</td>
+      </tr>
+    `).join('');
 
-    // Signature block
-    rows.push(row([cell(caps('Approved by supervisor'), 'Label'), cell('', 'Blank'), cell(caps('Approval timestamp'), 'Label')]));
-    rows.push(row([cell('/s/ ' + signedName, 'Signature'), cell('', 'Blank'), cell(signedAtLabel, 'Value')]));
-    rows.push(row([cell(signedName + ' · ' + signedTitle, 'Value')]));
-    if (payPeriod.directorComment) {
-      rows.push(row([cell('', 'Blank')]));
-      rows.push(row([cell(caps('Note from supervisor'), 'Label')]));
-      rows.push(row([cell(payPeriod.directorComment, 'Value')]));
-    }
-
-    rows.push(row([cell('', 'Blank')]));
-    rows.push(row([cell('The Representation Project · 5716 Folsom Blvd #155 · Sacramento CA 95819', 'Footer'), cell('', 'Blank'), cell('Generated ' + exportedAt, 'Footer')]));
-
-    return { rows, pp, user };
+    return `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="UTF-8" />
+<!--[if gte mso 9]><xml>
+ <x:ExcelWorkbook>
+  <x:ExcelWorksheets>
+   <x:ExcelWorksheet>
+    <x:Name>${escapeHtml(pp.label.replace(/[–—]/g, '-'))}</x:Name>
+    <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+   </x:ExcelWorksheet>
+  </x:ExcelWorksheets>
+ </x:ExcelWorkbook>
+</xml><![endif]-->
+<style>
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    color: #003E56;
+    font-size: 11pt;
+    margin: 18px;
   }
+  .org {
+    font-size: 16pt;
+    font-weight: 700;
+    color: #1FBDD6;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .subtitle {
+    font-size: 9pt;
+    color: #6B6F75;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 12px;
+  }
+  .badge {
+    display: inline-block;
+    background: #1FBDD6;
+    color: #FFFFFF;
+    font-weight: 700;
+    font-size: 10pt;
+    padding: 6px 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .meta {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 16px;
+    background: #FAECE5;
+  }
+  .meta td {
+    padding: 8px 10px;
+    border: 1px solid #f0d8c8;
+    vertical-align: top;
+  }
+  .meta .lbl {
+    font-size: 8pt;
+    font-weight: 700;
+    color: #6B6F75;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .meta .val {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #003E56;
+  }
+  .totals {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 18px;
+  }
+  .totals th {
+    background: #003E56;
+    color: #FFFFFF;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 8px;
+    border: 1px solid #003E56;
+  }
+  .totals td {
+    text-align: center;
+    font-weight: 700;
+    font-size: 14pt;
+    padding: 10px 8px;
+    border: 1px solid #003E56;
+    background: #FAECE5;
+    color: #003E56;
+  }
+  .totals td.grand {
+    background: #003E56;
+    color: #FFFFFF;
+    font-size: 16pt;
+  }
+  table.days {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 18px;
+  }
+  table.days th {
+    background: #FAECE5;
+    color: #6B6F75;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    padding: 8px;
+    border-bottom: 2px solid #003E56;
+  }
+  table.days td.cell {
+    padding: 7px 8px;
+    border-bottom: 1px solid #E5E7EB;
+    color: #003E56;
+    font-size: 10pt;
+  }
+  table.days td.num,
+  table.days td.total {
+    padding: 7px 8px;
+    border-bottom: 1px solid #E5E7EB;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: #003E56;
+    font-size: 10pt;
+  }
+  table.days td.total { font-weight: 700; }
+  .sig {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    border-top: 2px solid #003E56;
+  }
+  .sig td { padding: 10px 8px 4px; vertical-align: top; }
+  .sig .lbl {
+    font-size: 8pt;
+    font-weight: 700;
+    color: #6B6F75;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .sig .mark {
+    font-family: 'Brush Script MT', 'Apple Chancery', cursive;
+    font-size: 16pt;
+    color: #1FBDD6;
+  }
+  .sig .name {
+    font-weight: 700;
+    color: #003E56;
+    border-bottom: 1px solid #003E56;
+    padding-bottom: 4px;
+    display: inline-block;
+    min-width: 220px;
+  }
+  .footer {
+    margin-top: 22px;
+    padding-top: 10px;
+    border-top: 1px solid #E5E7EB;
+    font-size: 8pt;
+    color: #6B6F75;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .note {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: #FAECE5;
+    border-left: 3px solid #1FBDD6;
+    color: #003E56;
+    font-size: 10pt;
+  }
+</style>
+</head>
+<body>
+  <table style="width:100%; border-collapse:collapse; margin-bottom:8px;">
+    <tr>
+      <td>
+        <div class="org">The Representation Project</div>
+        <div class="subtitle">${escapeHtml(caps('Timecard · Pay Period Receipt'))}</div>
+      </td>
+      <td style="text-align:right; vertical-align:top;">
+        <span class="badge">✓ ${escapeHtml(status)}</span>
+      </td>
+    </tr>
+  </table>
 
-  function buildSpreadsheetXml(state, payPeriod) {
-    const { rows, pp } = buildPayPeriodRows(state, payPeriod);
+  <table class="meta">
+    <tr>
+      <td>
+        <div class="lbl">${escapeHtml(caps('Employee'))}</div>
+        <div class="val">${escapeHtml(user.name || '—')}</div>
+        <div style="font-size:9pt;color:#6B6F75;margin-top:2px;">${escapeHtml(user.title || '')}${user.email ? ' · ' + escapeHtml(user.email) : ''}</div>
+      </td>
+      <td>
+        <div class="lbl">${escapeHtml(caps('Pay Date'))}</div>
+        <div class="val">${escapeHtml(payDateLabel)}</div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <div class="lbl">${escapeHtml(caps('Period Dates'))}</div>
+        <div class="val">${escapeHtml(TC.fmtRange(pp.periodStart, pp.periodEnd))}</div>
+      </td>
+      <td>
+        <div class="lbl">${escapeHtml(caps('Schedule'))}</div>
+        <div class="val">Semi-monthly</div>
+      </td>
+    </tr>
+  </table>
 
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:x="urn:schemas-microsoft-com:office:excel">
-  <Styles>
-    <Style ss:ID="Default"><Font ss:FontName="Lato" ss:Size="11" ss:Color="#003E56"/></Style>
-    <Style ss:ID="Org"><Font ss:FontName="Arial" ss:Size="14" ss:Bold="1" ss:Color="#1FBDD6"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style>
-    <Style ss:ID="Subtitle"><Font ss:FontName="Arial" ss:Size="10" ss:Color="#6B6F75"/></Style>
-    <Style ss:ID="Badge"><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1FBDD6" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
-    <Style ss:ID="Label"><Font ss:FontName="Arial" ss:Size="9" ss:Bold="1" ss:Color="#6B6F75"/></Style>
-    <Style ss:ID="Value"><Font ss:FontName="Lato" ss:Size="11" ss:Color="#003E56"/></Style>
-    <Style ss:ID="TotalsLabel"><Font ss:FontName="Arial" ss:Size="9" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#003E56" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>
-    <Style ss:ID="TotalsGrand"><Font ss:FontName="Arial" ss:Size="16" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#003E56" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/><NumberFormat ss:Format="0.00"/></Style>
-    <Style ss:ID="TotalsNum"><Font ss:FontName="Arial" ss:Size="12" ss:Bold="1" ss:Color="#003E56"/><Interior ss:Color="#FAECE5" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/><NumberFormat ss:Format="0.00"/></Style>
-    <Style ss:ID="TableHead"><Font ss:FontName="Arial" ss:Size="9" ss:Bold="1" ss:Color="#6B6F75"/><Interior ss:Color="#FAECE5" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#003E56"/></Borders></Style>
-    <Style ss:ID="TableCell"><Font ss:FontName="Lato" ss:Size="10" ss:Color="#003E56"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders></Style>
-    <Style ss:ID="TableNum"><Font ss:FontName="Lato" ss:Size="10" ss:Color="#003E56"/><Alignment ss:Horizontal="Right"/><NumberFormat ss:Format="0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders></Style>
-    <Style ss:ID="TableTotal"><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#003E56"/><Alignment ss:Horizontal="Right"/><NumberFormat ss:Format="0.00"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders></Style>
-    <Style ss:ID="Signature"><Font ss:FontName="Brush Script MT" ss:Size="14" ss:Color="#1FBDD6"/></Style>
-    <Style ss:ID="Footer"><Font ss:FontName="Arial" ss:Size="8" ss:Color="#6B6F75"/></Style>
-    <Style ss:ID="Blank"><Font ss:FontName="Lato" ss:Size="10"/></Style>
-  </Styles>
-  <Worksheet ss:Name="${escapeXml(pp.label)}">
-    <Table>
-      <Column ss:Width="90"/>
-      <Column ss:Width="50"/>
-      <Column ss:Width="70"/>
-      <Column ss:Width="70"/>
-      <Column ss:Width="55"/>
-      <Column ss:Width="55"/>
-      <Column ss:Width="45"/>
-      <Column ss:Width="45"/>
-      <Column ss:Width="55"/>
-      <Column ss:Width="45"/>
-      <Column ss:Width="60"/>
-      <Column ss:Width="100"/>
-      ${rows.join('\n      ')}
-    </Table>
-  </Worksheet>
-</Workbook>`;
+  <table class="totals">
+    <tr>
+      <th>${escapeHtml(caps('Total Hours'))}</th>
+      <th>${escapeHtml(caps('Clocked'))}</th>
+      <th>${escapeHtml(caps('PTO'))}</th>
+      <th>${escapeHtml(caps('Sick'))}</th>
+      <th>${escapeHtml(caps('Holiday'))}</th>
+      <th>${escapeHtml(caps('LWOP'))}</th>
+    </tr>
+    <tr>
+      <td class="grand">${fmtNum(totals.total)}</td>
+      <td>${fmtNum(totals.work)}</td>
+      <td>${fmtNum(totals.pto)}</td>
+      <td>${fmtNum(totals.sick)}</td>
+      <td>${fmtNum(totals.holiday || 0)}</td>
+      <td>${fmtNum(totals.lwop || 0)}</td>
+    </tr>
+  </table>
+
+  <table class="days">
+    <thead>
+      <tr>
+        <th>${escapeHtml(caps('Date'))}</th>
+        <th>${escapeHtml(caps('Day'))}</th>
+        <th>${escapeHtml(caps('Clock In'))}</th>
+        <th>${escapeHtml(caps('Clock Out'))}</th>
+        <th>${escapeHtml(caps('Break'))}</th>
+        <th>${escapeHtml(caps('Worked'))}</th>
+        <th>${escapeHtml(caps('PTO'))}</th>
+        <th>${escapeHtml(caps('Sick'))}</th>
+        <th>${escapeHtml(caps('Holiday'))}</th>
+        <th>${escapeHtml(caps('LWOP'))}</th>
+        <th>${escapeHtml(caps('Daily Total'))}</th>
+        <th>${escapeHtml(caps('Notes'))}</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${detailHtml || '<tr><td class="cell" colspan="12">No hours logged in this pay period</td></tr>'}
+    </tbody>
+  </table>
+
+  <table class="sig">
+    <tr>
+      <td>
+        <div class="lbl">${escapeHtml(caps('Approved by supervisor'))}</div>
+        <div class="mark">/s/ ${escapeHtml(signedName)}</div>
+        <div class="name">${escapeHtml(signedName)}</div>
+        <div style="font-size:9pt;color:#6B6F75;margin-top:4px;">${escapeHtml(signedTitle)}</div>
+      </td>
+      <td>
+        <div class="lbl">${escapeHtml(caps('Approval timestamp'))}</div>
+        <div class="val" style="font-weight:700;color:#003E56;margin-top:6px;">${escapeHtml(signedAtLabel)}</div>
+      </td>
+    </tr>
+  </table>
+
+  ${payPeriod.directorComment ? `
+    <div class="note">
+      <strong style="font-size:8pt;text-transform:uppercase;letter-spacing:0.06em;color:#6B6F75;">Note from supervisor</strong><br/>
+      ${escapeHtml(payPeriod.directorComment)}
+    </div>
+  ` : ''}
+
+  <div class="footer">
+    The Representation Project · 5716 Folsom Blvd #155 · Sacramento CA 95819
+    &nbsp;&nbsp;·&nbsp;&nbsp; Generated ${escapeHtml(exportedAt)}
+  </div>
+</body>
+</html>`;
   }
 
   function downloadPayPeriodExcel(state, payPeriod) {
+    if (!state || !payPeriod || !payPeriod.periodStart) {
+      console.error('[Timecard] Excel export missing pay period');
+      alert('Could not export this pay period. Try refreshing and downloading again.');
+      return;
+    }
+    if (typeof window.payPeriodForDate !== 'function' || typeof window.payPeriodTotals !== 'function') {
+      console.error('[Timecard] Excel export helpers not loaded');
+      alert('Excel export is still loading. Wait a second and try again.');
+      return;
+    }
+
     const pp = window.payPeriodForDate(payPeriod.periodStart, state.settings);
-    const xml = buildSpreadsheetXml(state, payPeriod);
-    const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const html = buildPayPeriodHtml(state, payPeriod);
+    // UTF-8 BOM helps Excel recognize encoding and keep branded styles.
+    const blob = new Blob(['\ufeff', html], {
+      type: 'application/vnd.ms-excel;charset=utf-8;',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `timecard-${pp.periodStart}-to-${pp.periodEnd}.xls`;
+    a.download = `TRP-Timecard-${pp.periodStart}-to-${pp.periodEnd}.xls`;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
   window.downloadPayPeriodExcel = downloadPayPeriodExcel;
