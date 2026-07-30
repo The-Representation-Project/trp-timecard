@@ -10,6 +10,22 @@
 // ever change the user identity / starting balances and want a clean
 // slate on next load, bump this again.
 const STORAGE_KEY = 'trp-timecard-v2';
+// Pending Katrina receipt — survives cloud sync overwriting local state
+// right after Erika clicks the #receipt= link.
+const PENDING_RECEIPT_KEY = 'trp-tc-pending-receipt';
+
+function stashPendingReceipt(receipt) {
+  try { sessionStorage.setItem(PENDING_RECEIPT_KEY, JSON.stringify(receipt)); } catch (e) {}
+}
+function loadPendingReceipt() {
+  try {
+    const raw = sessionStorage.getItem(PENDING_RECEIPT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function clearPendingReceipt() {
+  try { sessionStorage.removeItem(PENDING_RECEIPT_KEY); } catch (e) {}
+}
 
 // ----- Real people --------------------------------------------------------
 // Edit these here if titles or email addresses ever change.
@@ -154,7 +170,7 @@ function StoreProvider({ children }) {
       // Defensive merge with our schema defaults so any newly-added
       // settings keys don't blow up older cloud rows.
       const base = emptyState();
-      const merged = {
+      const mergedRemote = {
         ...base,
         ...data,
         users: base.users.map(u => {
@@ -164,14 +180,53 @@ function StoreProvider({ children }) {
         settings: { ...base.settings, ...(data.settings || {}) },
         session: { ...base.session, ...(data.session || {}) },
       };
-      skipNextSaveRef.current = true;
-      setState(merged);
+      // Don't let a stale cloud row wipe Katrina's receipt that was just
+      // applied locally (or is sitting in sessionStorage).
+      setState(prev => {
+        let next = mergeCloudStatePreferringLocalApprovals(prev, mergedRemote);
+        const pending = loadPendingReceipt();
+        if (pending) {
+          next = applyApprovalReceiptToState(next, pending);
+          const emp = next.users.find(u => u.role === 'employee');
+          const rec = emp && payPeriodRecord(next, pending.periodStart, emp.id);
+          if (rec && rec.status === 'approved' && rec.signedViaReceipt) {
+            clearPendingReceipt();
+          }
+        }
+        return next;
+      });
+      // Allow this merged state to sync back up (approved status → cloud).
+      skipNextSaveRef.current = false;
     }
 
     const offStatus = cs.onStatusChange(s => { if (s === 'signed-in') pullRemote(); });
     const offRemote = cs.onRemoteData(remote => {
-      skipNextSaveRef.current = true;
-      setState(prev => ({ ...prev, ...remote }));
+      setState(prev => {
+        const base = emptyState();
+        const mergedRemote = {
+          ...base,
+          ...prev,
+          ...remote,
+          users: base.users.map(u => {
+            const found = ((remote && remote.users) || prev.users || []).find(x => x.id === u.id);
+            return found ? { ...u, ...found } : u;
+          }),
+          settings: { ...base.settings, ...(prev.settings || {}), ...((remote && remote.settings) || {}) },
+          session: { ...base.session, ...(prev.session || {}), ...((remote && remote.session) || {}) },
+        };
+        let next = mergeCloudStatePreferringLocalApprovals(prev, mergedRemote);
+        const pending = loadPendingReceipt();
+        if (pending) {
+          next = applyApprovalReceiptToState(next, pending);
+          const emp = next.users.find(u => u.role === 'employee');
+          const rec = emp && payPeriodRecord(next, pending.periodStart, emp.id);
+          if (rec && rec.status === 'approved' && rec.signedViaReceipt) {
+            clearPendingReceipt();
+          }
+        }
+        return next;
+      });
+      skipNextSaveRef.current = false;
     });
     // Initial pull if we're already signed-in at mount.
     pullRemote();
@@ -554,6 +609,99 @@ function buildApprovalRequest(state, periodStartIso) {
   };
 }
 
+function applyApprovalReceiptToState(s, receipt) {
+  const emp = s.users.find(u => u.role === 'employee');
+  const appr = s.users.find(u => u.role === 'director');
+  if (!emp || !receipt || !receipt.periodStart) return s;
+
+  const pp = payPeriodForDate(receipt.periodStart, s.settings);
+  let payPeriods = s.payPeriods;
+  const existing = payPeriods.find(p => p.periodStart === pp.periodStart && p.userId === emp.id);
+
+  // Already signed via this (or a later) receipt — keep existing, stay idempotent.
+  if (existing && existing.status === 'approved' && existing.signedViaReceipt) {
+    return s;
+  }
+
+  const signed = {
+    status: 'approved',
+    signedViaReceipt: true,
+    offline: false,
+    directorComment: receipt.comment || '',
+    decidedAt: receipt.signedAt,
+    signedName: receipt.signedName,
+    signedTitle: receipt.signedTitle || (appr ? appr.title : ''),
+    signedAt: receipt.signedAt,
+    approverEmail: appr ? appr.email : '',
+  };
+
+  if (existing) {
+    payPeriods = payPeriods.map(p => p.id === existing.id ? { ...p, ...signed } : p);
+  } else {
+    payPeriods = [...payPeriods, {
+      id: 'pp-' + window.TC.uid(),
+      userId: emp.id,
+      periodStart: pp.periodStart,
+      periodEnd: pp.periodEnd,
+      ...signed,
+    }];
+  }
+
+  const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
+  const weekSubmissions = s.weekSubmissions.map(w =>
+    (weekStarts.includes(w.weekStart) && w.userId === emp.id)
+      ? { ...w, status: 'approved', decidedAt: signed.decidedAt, directorComment: signed.directorComment || w.directorComment }
+      : w
+  );
+
+  const alreadyAccrued = existing && existing.accrued;
+  let users = s.users;
+  if (!alreadyAccrued && s.settings.accrualEnabled) {
+    const totals = payPeriodTotals(s, pp.periodStart, emp.id);
+    const ptoAccrued = totals.work * (s.settings.ptoAccrualPerHour || 0);
+    const sickAccrued = totals.work * (s.settings.sickAccrualPerHour || 0);
+    users = users.map(u => u.id === emp.id ? {
+      ...u,
+      ptoBalance: Number((u.ptoBalance + ptoAccrued).toFixed(4)),
+      sickBalance: Number((u.sickBalance + sickAccrued).toFixed(4)),
+    } : u);
+    payPeriods = payPeriods.map(p => (p.periodStart === pp.periodStart && p.userId === emp.id)
+      ? { ...p, accrued: { pto: ptoAccrued, sick: sickAccrued, when: signed.decidedAt } }
+      : p);
+  }
+
+  return { ...s, users, payPeriods, weekSubmissions };
+}
+
+// Prefer local signed-off periods when cloud still has awaiting/pending.
+function mergeCloudStatePreferringLocalApprovals(local, remoteMerged) {
+  const emp = local.users.find(u => u.role === 'employee');
+  if (!emp) return remoteMerged;
+  const localApproved = (local.payPeriods || []).filter(
+    p => p.userId === emp.id && p.status === 'approved' && p.signedViaReceipt
+  );
+  if (localApproved.length === 0) return remoteMerged;
+
+  let payPeriods = [...(remoteMerged.payPeriods || [])];
+  let weekSubmissions = [...(remoteMerged.weekSubmissions || [])];
+  let users = remoteMerged.users;
+
+  localApproved.forEach(signed => {
+    const idx = payPeriods.findIndex(p => p.periodStart === signed.periodStart && p.userId === emp.id);
+    if (idx >= 0) payPeriods[idx] = { ...payPeriods[idx], ...signed };
+    else payPeriods.push(signed);
+
+    const weekStarts = payPeriodWeekStarts(signed.periodStart, signed.periodEnd);
+    weekSubmissions = weekSubmissions.map(w =>
+      (weekStarts.includes(w.weekStart) && w.userId === emp.id)
+        ? { ...w, status: 'approved', decidedAt: signed.decidedAt || w.decidedAt, directorComment: signed.directorComment || w.directorComment }
+        : w
+    );
+  });
+
+  return { ...remoteMerged, users, payPeriods, weekSubmissions };
+}
+
 function buildApprovalReceipt({ periodStart, periodEnd, signedName, signedTitle, signedAt, comment, totalHours }) {
   return {
     v: 1,
@@ -578,6 +726,18 @@ function decodePayload(s) {
     const json = decodeURIComponent(escape(atob(padded)));
     return JSON.parse(json);
   } catch (e) { return null; }
+}
+
+function parseReceiptFromText(text) {
+  if (!text) return null;
+  const trimmed = String(text).trim();
+  let match = trimmed.match(/#receipt=([A-Za-z0-9\-_]+)/);
+  if (!match) match = trimmed.match(/^receipt=([A-Za-z0-9\-_]+)/);
+  const enc = match ? match[1] : (/^[A-Za-z0-9\-_]+$/.test(trimmed) ? trimmed : null);
+  if (!enc) return null;
+  const payload = decodePayload(enc);
+  if (!payload || payload.kind !== 'receipt') return null;
+  return payload;
 }
 
 function approvalRequestUrl(state, periodStartIso) {
@@ -837,67 +997,19 @@ function makeActions(update) {
     // we decoded the receipt, this folds it into local state: marks the pay
     // period approved, locks all weeks inside it, accrues PTO + sick.
     importApprovalReceipt(receipt) {
-      update(s => {
-        const emp = s.users.find(u => u.role === 'employee');
-        const appr = s.users.find(u => u.role === 'director');
-        if (!emp) return s;
+      if (!receipt || !receipt.periodStart) return false;
+      stashPendingReceipt(receipt);
+      update(s => applyApprovalReceiptToState(s, receipt));
+      return true;
+    },
 
-        const pp = payPeriodForDate(receipt.periodStart, s.settings);
-        let payPeriods = s.payPeriods;
-        const existing = payPeriods.find(p => p.periodStart === pp.periodStart && p.userId === emp.id);
-
-        const signed = {
-          status: 'approved',
-          signedViaReceipt: true,
-          offline: false,
-          directorComment: receipt.comment || '',
-          decidedAt: receipt.signedAt,
-          signedName: receipt.signedName,
-          signedTitle: receipt.signedTitle || (appr ? appr.title : ''),
-          signedAt: receipt.signedAt,
-          approverEmail: appr ? appr.email : '',
-        };
-
-        if (existing) {
-          payPeriods = payPeriods.map(p => p.id === existing.id ? { ...p, ...signed } : p);
-        } else {
-          payPeriods = [...payPeriods, {
-            id: 'pp-' + window.TC.uid(),
-            userId: emp.id,
-            periodStart: pp.periodStart,
-            periodEnd: pp.periodEnd,
-            ...signed,
-          }];
-        }
-
-        // Mark every week that touches this period as approved + locked.
-        const weekStarts = payPeriodWeekStarts(pp.periodStart, pp.periodEnd);
-        const weekSubmissions = s.weekSubmissions.map(w =>
-          (weekStarts.includes(w.weekStart) && w.userId === emp.id)
-            ? { ...w, status: 'approved', decidedAt: signed.decidedAt, directorComment: signed.directorComment || w.directorComment }
-            : w
-        );
-
-        // Accrue PTO + sick from worked hours in this period (one-time per
-        // period — we tag the pp record so a second import is idempotent).
-        const alreadyAccrued = existing && existing.accrued;
-        let users = s.users;
-        if (!alreadyAccrued && s.settings.accrualEnabled) {
-          const totals = payPeriodTotals(s, pp.periodStart, emp.id);
-          const ptoAccrued = totals.work * (s.settings.ptoAccrualPerHour || 0);
-          const sickAccrued = totals.work * (s.settings.sickAccrualPerHour || 0);
-          users = users.map(u => u.id === emp.id ? {
-            ...u,
-            ptoBalance: Number((u.ptoBalance + ptoAccrued).toFixed(4)),
-            sickBalance: Number((u.sickBalance + sickAccrued).toFixed(4)),
-          } : u);
-          payPeriods = payPeriods.map(p => (p.periodStart === pp.periodStart && p.userId === emp.id)
-            ? { ...p, accrued: { pto: ptoAccrued, sick: sickAccrued, when: signed.decidedAt } }
-            : p);
-        }
-
-        return { ...s, users, payPeriods, weekSubmissions };
-      });
+    // Paste or type a #receipt= URL / payload when the email link didn't open.
+    importApprovalReceiptFromText(text) {
+      const receipt = parseReceiptFromText(text);
+      if (!receipt) return { ok: false, error: 'Could not read an approval link from that text.' };
+      stashPendingReceipt(receipt);
+      update(s => applyApprovalReceiptToState(s, receipt));
+      return { ok: true, receipt };
     },
 
     // Like importApprovalReceipt but for backfilling already-approved-offline
@@ -1200,4 +1312,5 @@ Object.assign(window, {
   encodePayload, decodePayload,
   approvalRequestUrl, approvalReceiptUrl, readHashPayload,
   buildGmailComposeUrl, buildMailtoUrl,
+  applyApprovalReceiptToState, parseReceiptFromText,
 });

@@ -174,8 +174,9 @@ function PayPeriodSendCard({ payPeriod, state, onSend }) {
               🔓 Unlock for editing
             </button>
             <button className="btn ghost" onClick={onSend}>↻ Resend approval link</button>
+            <PasteApprovalLinkButton />
             <div className="tiny muted" style={{marginLeft: 'auto', alignSelf: 'center', maxWidth: 280, textAlign: 'right'}}>
-              Waiting on Katrina's signature. Need to fix hours first? Unlock, edit on Timesheet, then re-send.
+              Katrina signed? Paste the approval link from her email to update your records.
             </div>
           </>
         )}
@@ -567,4 +568,63 @@ function SendForApprovalModal({ periodStartIso, onClose }) {
   );
 }
 
-Object.assign(window, { PayPeriodSendCard, SendForApprovalModal });
+Object.assign(window, { PayPeriodSendCard, SendForApprovalModal, PasteApprovalLinkButton });
+
+function PasteApprovalLinkButton() {
+  const { actions } = useStore();
+  const [open, setOpen] = useStateSend(false);
+  const [text, setText] = useStateSend('');
+  const [error, setError] = useStateSend('');
+
+  function apply() {
+    const result = actions.importApprovalReceiptFromText(text);
+    if (!result.ok) {
+      setError(result.error || 'Could not apply that link.');
+      return;
+    }
+    setOpen(false);
+    setText('');
+    setError('');
+    alert('Approval recorded for ' + result.receipt.periodStart + ' → ' + result.receipt.periodEnd + '. Signed by ' + result.receipt.signedName + '.');
+  }
+
+  return (
+    <>
+      <button className="btn" style={{background: 'var(--trp-pacific-blue)'}} onClick={() => setOpen(true)}>
+        ✓ Paste Katrina's approval link
+      </button>
+      {open && (
+        <Modal
+          title="Record Katrina's approval"
+          subtitle="Paste the link from her “Approved: …” email (the long URL with #receipt=). This updates your Timecard — her signing alone does not."
+          onClose={() => { setOpen(false); setError(''); }}
+          maxWidth={560}
+        >
+          <div className="cert-box" style={{borderLeftColor: 'var(--trp-pacific-blue)', background: 'var(--trp-pacific-50)'}}>
+            <strong style={{fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-caps)', fontSize: 10, display: 'block', marginBottom: 4}}>
+              How this works
+            </strong>
+            Katrina signs on her page, then emails you a receipt link. Your app only updates when that link is opened (or pasted here). The signed PDF alone does not change Timecard status.
+          </div>
+          <label className="field">
+            <span className="lbl">Approval link or email text containing #receipt=</span>
+            <textarea
+              rows={4}
+              value={text}
+              onChange={e => { setText(e.target.value); setError(''); }}
+              placeholder="https://…/Timecard.html#receipt=…"
+              autoFocus
+            />
+          </label>
+          {error && <div className="comment-block warn" style={{marginBottom: 12}}>{error}</div>}
+          <div className="modal-actions">
+            <button className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn" onClick={apply} disabled={!text.trim()} style={{background: 'var(--trp-pacific-blue)'}}>
+              Record approval
+            </button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
