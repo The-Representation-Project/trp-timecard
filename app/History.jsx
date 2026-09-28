@@ -1,6 +1,69 @@
-// app/History.jsx — Past weeks with status filters + branded Excel export
+// app/History.jsx — Pay-period archive (PDF + branded Excel) + past weeks
 
 const { useState: useStateH, useMemo: useMemoH } = React;
+
+/** Every pay period that has hours or a stored record for this user. */
+function listUserPayPeriods(state, userId) {
+  const seen = new Map();
+  const touch = (dateIso) => {
+    if (!dateIso) return;
+    const pp = payPeriodForDate(dateIso, state.settings);
+    if (!seen.has(pp.periodStart)) seen.set(pp.periodStart, pp);
+  };
+  (state.payPeriods || []).filter(p => p.userId === userId).forEach(p => touch(p.periodStart));
+  (state.weekSubmissions || []).filter(w => w.userId === userId).forEach(w => touch(w.weekStart));
+  (state.timeEntries || []).filter(e => e.userId === userId).forEach(e => touch(e.date));
+  (state.leaveEntries || []).filter(l => l.userId === userId).forEach(l => touch(l.date));
+
+  return [...seen.values()]
+    .map(pp => {
+      const record = payPeriodRecord(state, pp.periodStart, userId);
+      const totals = payPeriodTotals(state, pp.periodStart, userId);
+      return {
+        ...pp,
+        record: record || null,
+        status: record ? record.status : 'pending',
+        totals,
+        isApproved: !!(record && record.status === 'approved'),
+      };
+    })
+    .filter(p => p.totals.total > 0 || p.record)
+    .sort((a, b) => b.periodStart.localeCompare(a.periodStart));
+}
+
+function downloadPeriodPdf(state, userId, periodStart) {
+  if (typeof window.printPayPeriodReceipt !== 'function') {
+    alert('PDF export is still loading. Wait a second and try again.');
+    return;
+  }
+  const pp = payPeriodForDate(periodStart, state.settings);
+  const rec = payPeriodRecord(state, periodStart, userId);
+  const dir = state.users.find(u => u.role === 'director') || {};
+  const payPeriod = rec || {
+    userId,
+    periodStart: pp.periodStart,
+    periodEnd: pp.periodEnd,
+    status: 'approved',
+    signedName: dir.name || 'Director',
+    signedTitle: dir.title || 'Director',
+    decidedAt: new Date().toISOString(),
+  };
+  window.printPayPeriodReceipt(state, payPeriod);
+}
+
+function downloadPeriodExcel(state, userId, periodStart) {
+  const pp = payPeriodForDate(periodStart, state.settings);
+  const rec = payPeriodRecord(state, periodStart, userId);
+  if (rec && typeof window.downloadPayPeriodExcel === 'function') {
+    window.downloadPayPeriodExcel(state, { ...rec, userId, periodStart: pp.periodStart });
+    return;
+  }
+  if (typeof window.downloadRangeExcel !== 'function') {
+    alert('Excel export is still loading. Wait a second and try again.');
+    return;
+  }
+  window.downloadRangeExcel(state, userId, pp.periodStart, pp.periodEnd);
+}
 
 function ImportHistoricalPanel() {
   const [open, setOpen] = useStateH(false);
@@ -83,6 +146,114 @@ function ImportHistoricalPanel() {
   );
 }
 
+function PayPeriodArchive({ userId }) {
+  const { state } = useStore();
+  const periods = useMemoH(
+    () => listUserPayPeriods(state, userId),
+    [state, userId]
+  );
+
+  if (periods.length === 0) {
+    return (
+      <div className="card" style={{marginBottom: 24}}>
+        <div className="empty">
+          <h3>No pay periods yet</h3>
+          <div>Once you log hours, every pay period will appear here for PDF and Excel download.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card" style={{padding: 0, overflowX: 'auto', marginBottom: 28}}>
+      <table className="history-table">
+        <thead>
+          <tr>
+            <th>Pay Period</th>
+            <th style={{textAlign: 'right'}}>Clocked</th>
+            <th style={{textAlign: 'right'}}>PTO</th>
+            <th style={{textAlign: 'right'}}>Sick</th>
+            <th style={{textAlign: 'right'}}>Holiday</th>
+            <th style={{textAlign: 'right'}}>Total</th>
+            <th>Status</th>
+            <th>Signed</th>
+            <th>Downloads</th>
+          </tr>
+        </thead>
+        <tbody>
+          {periods.map(p => {
+            const signedAt = p.record && (p.record.signedAt || p.record.decidedAt);
+            const signedLabel = signedAt
+              ? new Date(signedAt).toLocaleDateString(undefined, {
+                  month: 'short', day: 'numeric', year: 'numeric',
+                })
+              : '—';
+            const signedBy = p.record && p.isApproved
+              ? (p.record.signedName || 'Director')
+              : '';
+            return (
+              <tr key={p.periodStart}>
+                <td>
+                  <strong style={{color: 'var(--trp-navy)'}}>
+                    {p.label} · {TC.parseDate(p.periodStart).getFullYear()}
+                  </strong>
+                  <div className="tiny muted">{TC.fmtRange(p.periodStart, p.periodEnd)}</div>
+                </td>
+                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(p.totals.work)}</td>
+                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(p.totals.pto)}</td>
+                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(p.totals.sick)}</td>
+                <td className="tnum" style={{textAlign: 'right'}}>{TC.fmtHours(p.totals.holiday || 0)}</td>
+                <td className="tnum total" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>
+                  {TC.fmtHours(p.totals.total)}
+                </td>
+                <td>
+                  {p.isApproved ? (
+                    <span className="badge approved"><span className="dot" />Signed Off</span>
+                  ) : p.status === 'awaiting_approval' ? (
+                    <span className="badge submitted"><span className="dot" />Awaiting</span>
+                  ) : (
+                    <span className="badge draft"><span className="dot" />Open</span>
+                  )}
+                </td>
+                <td>
+                  {p.isApproved ? (
+                    <>
+                      <div style={{fontWeight: 600, color: 'var(--trp-navy)', fontSize: 13}}>{signedBy}</div>
+                      <div className="tiny muted">{signedLabel}</div>
+                    </>
+                  ) : (
+                    <span className="tiny muted">—</span>
+                  )}
+                </td>
+                <td>
+                  <div style={{display: 'flex', gap: 6, flexWrap: 'wrap'}}>
+                    <button
+                      type="button"
+                      className="btn small"
+                      disabled={!p.isApproved}
+                      title={p.isApproved ? 'Open print dialog → Save as PDF' : 'Available after approval'}
+                      onClick={() => downloadPeriodPdf(state, userId, p.periodStart)}
+                    >
+                      ↓ PDF
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      onClick={() => downloadPeriodExcel(state, userId, p.periodStart)}
+                    >
+                      ↓ Excel
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function History() {
   const { state } = useStore();
   const user = currentUser(state);
@@ -123,7 +294,7 @@ function History() {
       <div className="page-header">
         <div>
           <div className="eyebrow">History</div>
-          <h1>Past Weeks & Submissions</h1>
+          <h1>Pay Periods & Past Weeks</h1>
         </div>
         <div className="actions">
           <ImportHistoricalPanel />
@@ -131,6 +302,15 @@ function History() {
         </div>
       </div>
 
+      <div style={{marginBottom: 10}}>
+        <div className="eyebrow" style={{marginBottom: 6}}>Pay period archive</div>
+        <p className="tiny muted" style={{margin: '0 0 12px', maxWidth: 560}}>
+          Download the signed PDF or TRP-branded Excel for any pay period. PDF is available once the period is signed off.
+        </p>
+      </div>
+      <PayPeriodArchive userId={targetUser.id} />
+
+      <div className="eyebrow" style={{marginBottom: 10}}>Week detail</div>
       <div className="filter-row">
         <span className="eyebrow" style={{marginRight: 8}}>Filter:</span>
         {filters.map(f => (
@@ -210,37 +390,26 @@ function ExportModal({ userId, onClose }) {
   const weeks = state.weekSubmissions.filter(w => w.userId === userId)
     .map(w => w.weekStart).sort().reverse();
 
-  const periods = useMemoH(() => {
-    const seen = new Map();
-    const add = (dateIso) => {
-      if (!dateIso) return;
-      const pp = payPeriodForDate(dateIso, state.settings);
-      if (!seen.has(pp.periodStart)) seen.set(pp.periodStart, pp);
-    };
-    (state.payPeriods || []).filter(p => p.userId === userId).forEach(p => add(p.periodStart));
-    (state.weekSubmissions || []).filter(w => w.userId === userId).forEach(w => add(w.weekStart));
-    (state.timeEntries || []).filter(e => e.userId === userId).forEach(e => add(e.date));
-    add(TC.isoDate(today));
-    return [...seen.values()].sort((a, b) => b.periodStart.localeCompare(a.periodStart));
-  }, [state, userId]);
+  const periods = useMemoH(
+    () => listUserPayPeriods(state, userId),
+    [state, userId]
+  );
 
   const [selectedPeriod, setSelectedPeriod] = useStateH(
     () => (periods[0] && periods[0].periodStart) || payPeriodForDate(TC.isoDate(today), state.settings).periodStart
   );
 
-  function exportNow() {
+  const selectedMeta = periods.find(p => p.periodStart === selectedPeriod);
+  const canPdf = mode === 'period' && selectedMeta && selectedMeta.isApproved;
+
+  function exportExcel() {
     let start, end;
     if (mode === 'period') {
-      const pp = payPeriodForDate(selectedPeriod, state.settings);
-      start = pp.periodStart;
-      end = pp.periodEnd;
-      const rec = payPeriodRecord(state, pp.periodStart, userId);
-      if (rec && typeof window.downloadPayPeriodExcel === 'function') {
-        window.downloadPayPeriodExcel(state, { ...rec, userId, periodStart: pp.periodStart });
-        onClose();
-        return;
-      }
-    } else if (mode === 'week') {
+      downloadPeriodExcel(state, userId, selectedPeriod);
+      onClose();
+      return;
+    }
+    if (mode === 'week') {
       start = selectedWeek;
       end = TC.weekDays(selectedWeek)[6];
     } else {
@@ -255,8 +424,14 @@ function ExportModal({ userId, onClose }) {
     onClose();
   }
 
+  function exportPdf() {
+    if (!canPdf) return;
+    downloadPeriodPdf(state, userId, selectedPeriod);
+    onClose();
+  }
+
   return (
-    <Modal title="Export Excel" subtitle="TRP-branded spreadsheet — same look as pay-period downloads." onClose={onClose}>
+    <Modal title="Export" subtitle="TRP-branded Excel — same design as pay-period receipts. PDF for signed-off periods." onClose={onClose}>
       <label className="field">
         <span className="lbl">Scope</span>
         <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8}}>
@@ -269,9 +444,14 @@ function ExportModal({ userId, onClose }) {
         <label className="field">
           <span className="lbl">Pay Period</span>
           <select value={selectedPeriod} onChange={e => setSelectedPeriod(e.target.value)}>
-            {periods.map(p => (
+            {(periods.length ? periods : [{
+              periodStart: selectedPeriod,
+              periodEnd: payPeriodForDate(selectedPeriod, state.settings).periodEnd,
+              label: payPeriodForDate(selectedPeriod, state.settings).label,
+            }]).map(p => (
               <option key={p.periodStart} value={p.periodStart}>
                 {p.label} · {TC.fmtRange(p.periodStart, p.periodEnd)}
+                {p.isApproved ? ' · signed off' : ''}
               </option>
             ))}
           </select>
@@ -299,7 +479,12 @@ function ExportModal({ userId, onClose }) {
       )}
       <div className="modal-actions">
         <button className="btn ghost" onClick={onClose}>Cancel</button>
-        <button className="btn" onClick={exportNow}>↓ Download Excel</button>
+        {mode === 'period' && (
+          <button className="btn ghost" disabled={!canPdf} onClick={exportPdf} title={canPdf ? '' : 'Available after approval'}>
+            ↓ Download PDF
+          </button>
+        )}
+        <button className="btn" onClick={exportExcel}>↓ Download Excel</button>
       </div>
     </Modal>
   );

@@ -39,7 +39,9 @@
     });
     const exportedAt = new Date().toLocaleString();
 
-    const status = payPeriod.status === 'approved' ? 'APPROVED · SiGNED OFF' : payPeriod.status.toUpperCase();
+    const status = payPeriod.status === 'approved'
+      ? 'APPROVED · SiGNED OFF'
+      : String(payPeriod.status || 'pending').toUpperCase();
 
     // Replace every uppercase 'I' with lowercase 'i' on caps headlines
     // (matching TRP's signature rule). The print doc doesn't load trp-headline-i.js,

@@ -177,11 +177,14 @@ function Home() {
   const todayLeave = state.leaveEntries.filter(l => l.userId === user.id && l.date === todayIso);
   const todayLeaveHours = todayLeave.reduce((a, l) => a + l.hours, 0);
 
-  // Only surface pay periods that still need approval — never re-show
-  // hours from periods Katrina already signed off.
-  const recentApprovedPP = [...state.payPeriods]
-    .filter(p => p.userId === user.id && p.status === 'approved' && p.signedViaReceipt && p.decidedAt)
-    .sort((a, b) => (b.decidedAt || '').localeCompare(a.decidedAt || ''))[0];
+  // All signed-off periods (Katrina receipt or offline backfill), newest first.
+  // Home shows the latest as a full card; every period is downloadable below
+  // and again on History → Pay period archive.
+  const approvedPayPeriods = [...state.payPeriods]
+    .filter(p => p.userId === user.id && p.status === 'approved')
+    .sort((a, b) => (b.decidedAt || b.signedAt || b.periodStart || '')
+      .localeCompare(a.decidedAt || a.signedAt || a.periodStart || ''));
+  const recentApprovedPP = approvedPayPeriods[0] || null;
 
   // Pay periods waiting on Erika to send to Katrina, or sitting with Katrina.
   // We surface BOTH any payPeriod record marked awaiting_approval AND any
@@ -273,6 +276,91 @@ function Home() {
       {recentApprovedPP && (
         <div style={{marginBottom: 24}}>
           <PayPeriodApprovedCard payPeriod={recentApprovedPP} state={state} />
+          {approvedPayPeriods.length > 1 && (
+            <div className="card" style={{padding: 0, marginTop: 12, overflowX: 'auto'}}>
+              <div style={{
+                padding: '12px 18px',
+                borderBottom: '1px solid var(--border-soft)',
+                display: 'flex',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}>
+                <div>
+                  <div className="eyebrow">Earlier signed-off periods</div>
+                  <div className="tiny muted">Re-download any approval PDF or branded Excel</div>
+                </div>
+                <button
+                  type="button"
+                  className="btn ghost small"
+                  onClick={() => window.dispatchEvent(new CustomEvent('trp-goto-tab', { detail: 'history' }))}
+                >
+                  Open full archive →
+                </button>
+              </div>
+              <table className="history-table">
+                <thead>
+                  <tr>
+                    <th>Pay Period</th>
+                    <th style={{textAlign: 'right'}}>Total</th>
+                    <th>Signed</th>
+                    <th>Downloads</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {approvedPayPeriods.slice(1).map(p => {
+                    const pp = payPeriodForDate(p.periodStart, state.settings);
+                    const totals = payPeriodTotals(state, p.periodStart, user.id);
+                    const when = p.signedAt || p.decidedAt;
+                    return (
+                      <tr key={p.id || p.periodStart}>
+                        <td>
+                          <strong style={{color: 'var(--trp-navy)'}}>
+                            {pp.label} · {TC.parseDate(pp.periodStart).getFullYear()}
+                          </strong>
+                          <div className="tiny muted">{TC.fmtRange(pp.periodStart, pp.periodEnd)}</div>
+                        </td>
+                        <td className="tnum" style={{textAlign: 'right', fontWeight: 700, color: 'var(--trp-navy)'}}>
+                          {TC.fmtHours(totals.total)}
+                        </td>
+                        <td>
+                          <div style={{fontWeight: 600, fontSize: 13, color: 'var(--trp-navy)'}}>
+                            {p.signedName || 'Director'}
+                          </div>
+                          <div className="tiny muted">
+                            {when
+                              ? new Date(when).toLocaleDateString(undefined, {
+                                  month: 'short', day: 'numeric', year: 'numeric',
+                                })
+                              : '—'}
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{display: 'flex', gap: 6, flexWrap: 'wrap'}}>
+                            <button
+                              type="button"
+                              className="btn small"
+                              onClick={() => window.printPayPeriodReceipt(state, p)}
+                            >
+                              ↓ PDF
+                            </button>
+                            <button
+                              type="button"
+                              className="btn ghost small"
+                              onClick={() => window.downloadPayPeriodExcel(state, p)}
+                            >
+                              ↓ Excel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
