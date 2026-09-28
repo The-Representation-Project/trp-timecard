@@ -1,0 +1,16 @@
+Timecard will look BLANK if you double-click Timecard.html.
+
+Browsers block the app scripts on file:// pages. You need a tiny local server.
+
+EASIEST — Mac / Linux
+1. Open Terminal in this folder
+2. Run:   ./start-local.sh
+3. Browser opens http://localhost:8765/Timecard.html
+
+EASIEST — Windows
+1. Double-click start-local.bat
+2. Browser opens http://localhost:8765/Timecard.html
+
+OR use your Netlify URL (already works; no local server needed).
+
+Need Python 3 installed (Mac/Linux usually have it; Windows: python.org).

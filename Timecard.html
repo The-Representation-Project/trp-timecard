@@ -31,33 +31,76 @@
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div id="boot-msg" style="font-family:system-ui,sans-serif;max-width:420px;margin:48px auto;padding:24px;color:#003E56;line-height:1.5;">
+      <p style="margin:0 0 8px;font-weight:700;">Loading Timecard…</p>
+      <p style="margin:0;font-size:14px;color:#5a6a72;">If this stays blank, open via <code>./start-local.sh</code> (or your Netlify URL) — double‑clicking the HTML file will not work.</p>
+    </div>
+  </div>
 
-  <!-- Plain JS helpers -->
-  <script src="app/util.js?v=4"></script>
-  <script src="app/importHistorical.js?v=4"></script>
-  <script src="app/printReceipt.js?v=7"></script>
-  <script src="app/exportExcel.js?v=3"></script>
+  <script>
+    // file:// cannot load Babel JSX sources (browser CORS) → blank page.
+    if (location.protocol === 'file:') {
+      document.getElementById('root').innerHTML =
+        '<div style="font-family:system-ui,sans-serif;max-width:480px;margin:48px auto;padding:28px;border:1px solid #d5dde2;border-radius:12px;color:#003E56;line-height:1.5;background:#f7f5f1;">' +
+        '<div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:8px;color:#0a7ea4;">The Representation Project</div>' +
+        '<h1 style="margin:0 0 12px;font-size:22px;">Can’t open Timecard this way</h1>' +
+        '<p style="margin:0 0 12px;font-size:15px;">Double‑clicking <code>Timecard.html</code> uses a <code>file://</code> URL. Browsers block the app scripts there, so the page looks blank.</p>' +
+        '<p style="margin:0 0 8px;font-size:15px;"><strong>Fix — pick one:</strong></p>' +
+        '<ol style="margin:0 0 14px;padding-left:20px;font-size:15px;">' +
+        '<li style="margin-bottom:6px;">Double‑click <code>start-local.command</code> (Mac) or <code>start-local.bat</code> (Windows), then use the page that opens.</li>' +
+        '<li>Or use your Netlify site URL (already online).</li>' +
+        '</ol>' +
+        '<p style="margin:0;font-size:13px;color:#5a6a72;">See <code>OPEN-LOCALLY.txt</code> in this folder for details.</p>' +
+        '</div>';
+    } else {
+      // If scripts fail for another reason, keep the boot hint visible.
+      setTimeout(function () {
+        var root = document.getElementById('root');
+        if (root && root.querySelector('#boot-msg') && !root.querySelector('.app')) {
+          var el = document.getElementById('boot-msg');
+          if (el) {
+            el.innerHTML =
+              '<p style="margin:0 0 8px;font-weight:700;color:#8c2f2f;">Timecard didn’t finish loading</p>' +
+              '<p style="margin:0;font-size:14px;color:#5a6a72;">Check that you have internet (React loads from a CDN), then hard‑refresh. Or open your Netlify URL.</p>';
+          }
+        }
+      }, 8000);
+    }
+  </script>
 
-  <!-- Supabase SDK (for optional cloud sync). Loaded eagerly so
-       magic-link redirects are handled at page-load. -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-  <script src="app/cloudSync.js?v=5"></script>
-
-  <!-- React components (order matters: dependencies before dependents) -->
-  <script type="text/babel" src="app/store.jsx?v=15"></script>
-  <script type="text/babel" src="app/ui.jsx?v=8"></script>
-  <script type="text/babel" src="app/PayPeriodApproved.jsx?v=5"></script>
-  <script type="text/babel" src="app/Send.jsx?v=13"></script>
-  <script type="text/babel" src="app/CloudSettings.jsx?v=5"></script>
-  <script type="text/babel" src="app/Home.jsx?v=10"></script>
-  <script type="text/babel" src="app/Timesheet.jsx?v=7"></script>
-  <script type="text/babel" src="app/TimeOff.jsx?v=4"></script>
-  <script type="text/babel" src="app/History.jsx?v=8"></script>
-  <script type="text/babel" src="app/Approval.jsx?v=9"></script>
-  <script type="text/babel" src="app/App.jsx?v=6"></script>
-
-  <!-- TRP signature lowercase-i enforcement -->
-  <script src="assets/trp-headline-i.js"></script>
+  <script>
+    // Skip loading app scripts on file:// — they cannot run there.
+    if (location.protocol === 'file:') {
+      // Message already rendered above.
+    } else {
+      var files = [
+        ['script', 'app/util.js?v=4'],
+        ['script', 'app/importHistorical.js?v=4'],
+        ['script', 'app/printReceipt.js?v=7'],
+        ['script', 'app/exportExcel.js?v=3'],
+        ['script', 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js'],
+        ['script', 'app/cloudSync.js?v=5'],
+        ['babel', 'app/store.jsx?v=15'],
+        ['babel', 'app/ui.jsx?v=8'],
+        ['babel', 'app/PayPeriodApproved.jsx?v=5'],
+        ['babel', 'app/Send.jsx?v=13'],
+        ['babel', 'app/CloudSettings.jsx?v=5'],
+        ['babel', 'app/Home.jsx?v=10'],
+        ['babel', 'app/Timesheet.jsx?v=7'],
+        ['babel', 'app/TimeOff.jsx?v=4'],
+        ['babel', 'app/History.jsx?v=8'],
+        ['babel', 'app/Approval.jsx?v=9'],
+        ['babel', 'app/App.jsx?v=6'],
+        ['script', 'assets/trp-headline-i.js'],
+      ];
+      files.forEach(function (item) {
+        var s = document.createElement('script');
+        if (item[0] === 'babel') s.type = 'text/babel';
+        s.src = item[1];
+        document.body.appendChild(s);
+      });
+    }
+  </script>
 </body>
 </html>

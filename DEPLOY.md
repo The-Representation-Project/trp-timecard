@@ -24,15 +24,20 @@ Everything you log lives in **your browser's localStorage**.
 
 ## Option A — Use it locally only (just you, no link sharing)
 
-Simplest possible setup. You bookmark a file on your machine.
+**Do not double-click `Timecard.html`.** Browsers block the app scripts on
+`file://` URLs, so the page looks blank.
 
 1. Put this folder anywhere on your computer (e.g. `~/Timecard/`).
-2. Double-click `Timecard.html`. Bookmark it in your browser.
-3. Track time. Logs persist forever in that browser's storage.
+2. Start the local server:
+   - **Mac:** double-click `start-local.command` (or run `./start-local.sh` in Terminal)
+   - **Windows:** double-click `start-local.bat`
+3. Your browser opens `http://localhost:8765/Timecard.html` — bookmark that.
+4. Leave the Terminal/command window open while you use the app.
 
-**Caveat for the approval flow:** the mailto link will use a `file://`
-URL Katrina can't open. For the email handoff to work, the app has
-to be hosted at a real URL — use Option B.
+See `OPEN-LOCALLY.txt` if anything goes wrong.
+
+**Caveat for the approval flow:** Katrina still needs a public URL she can
+open — use Option B (Netlify) for Send / approve emails.
 
 ---
 
