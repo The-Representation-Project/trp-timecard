@@ -1,0 +1,25 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/The-Representation-Project/trp-timecard.git"
+  },
+  "keywords": [],
+  "author": "",
+  "private": true,
+  "type": "module",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/The-Representation-Project/trp-timecard/issues"
+  },
+  "homepage": "https://github.com/The-Representation-Project/trp-timecard#readme",
+  "dependencies": {
+    "@messagebird/sdk": "^0.77.0"
+  }
+}
