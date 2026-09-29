@@ -69,38 +69,31 @@
     }
   </script>
 
-  <script>
-    // Skip loading app scripts on file:// — they cannot run there.
-    if (location.protocol === 'file:') {
-      // Message already rendered above.
-    } else {
-      var files = [
-        ['script', 'app/util.js?v=4'],
-        ['script', 'app/importHistorical.js?v=4'],
-        ['script', 'app/printReceipt.js?v=7'],
-        ['script', 'app/exportExcel.js?v=3'],
-        ['script', 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js'],
-        ['script', 'app/cloudSync.js?v=5'],
-        ['babel', 'app/store.jsx?v=15'],
-        ['babel', 'app/ui.jsx?v=8'],
-        ['babel', 'app/PayPeriodApproved.jsx?v=5'],
-        ['babel', 'app/Send.jsx?v=13'],
-        ['babel', 'app/CloudSettings.jsx?v=5'],
-        ['babel', 'app/Home.jsx?v=10'],
-        ['babel', 'app/Timesheet.jsx?v=7'],
-        ['babel', 'app/TimeOff.jsx?v=4'],
-        ['babel', 'app/History.jsx?v=8'],
-        ['babel', 'app/Approval.jsx?v=9'],
-        ['babel', 'app/App.jsx?v=6'],
-        ['script', 'assets/trp-headline-i.js'],
-      ];
-      files.forEach(function (item) {
-        var s = document.createElement('script');
-        if (item[0] === 'babel') s.type = 'text/babel';
-        s.src = item[1];
-        document.body.appendChild(s);
-      });
-    }
-  </script>
+  <!-- Plain JS helpers (skipped effectively on file:// by the notice above) -->
+  <script src="app/util.js?v=4"></script>
+  <script src="app/importHistorical.js?v=4"></script>
+  <script src="app/printReceipt.js?v=7"></script>
+  <script src="app/exportExcel.js?v=3"></script>
+
+  <!-- Supabase SDK (for optional cloud sync). Loaded eagerly so
+       magic-link redirects are handled at page-load. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="app/cloudSync.js?v=5"></script>
+
+  <!-- React components (order matters: dependencies before dependents) -->
+  <script type="text/babel" src="app/store.jsx?v=15"></script>
+  <script type="text/babel" src="app/ui.jsx?v=8"></script>
+  <script type="text/babel" src="app/PayPeriodApproved.jsx?v=5"></script>
+  <script type="text/babel" src="app/Send.jsx?v=13"></script>
+  <script type="text/babel" src="app/CloudSettings.jsx?v=5"></script>
+  <script type="text/babel" src="app/Home.jsx?v=10"></script>
+  <script type="text/babel" src="app/Timesheet.jsx?v=7"></script>
+  <script type="text/babel" src="app/TimeOff.jsx?v=4"></script>
+  <script type="text/babel" src="app/History.jsx?v=8"></script>
+  <script type="text/babel" src="app/Approval.jsx?v=9"></script>
+  <script type="text/babel" src="app/App.jsx?v=6"></script>
+
+  <!-- TRP signature lowercase-i enforcement -->
+  <script src="assets/trp-headline-i.js"></script>
 </body>
 </html>

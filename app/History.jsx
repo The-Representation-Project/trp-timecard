@@ -298,7 +298,7 @@ function History() {
         </div>
         <div className="actions">
           <ImportHistoricalPanel />
-          <button className="btn" onClick={() => setExportOpen(true)}>↓ Export Excel</button>
+          <button className="btn" onClick={() => setExportOpen(true)}>↓ Export</button>
         </div>
       </div>
 
