@@ -27,6 +27,16 @@ function App() {
   });
   useEffectA(() => { localStorage.setItem('trp-tc-tab', tab); }, [tab]);
 
+  // Cross-page navigation (e.g. Home → History archive).
+  useEffectA(() => {
+    function onGoto(e) {
+      const next = e && e.detail;
+      if (next && tabs.includes(next)) setTab(next);
+    }
+    window.addEventListener('trp-goto-tab', onGoto);
+    return () => window.removeEventListener('trp-goto-tab', onGoto);
+  }, []); // eslint-disable-line
+
   // Toast for when a receipt has just been imported from a #receipt= link.
   const [receiptToast, setReceiptToast] = useStateA(null);
 
